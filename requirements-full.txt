@@ -1,0 +1,13 @@
+# Full path: everything in requirements.txt plus embeddings, R2 (JAX), R3 labeling and plots.
+# These versions install and import together (2026-11-11); the full pipeline was not rerun with them.
+-r requirements.txt
+adjustText==1.4.0
+anthropic==2.8.0
+fastembed==0.9.1
+jax==0.12.0.1
+jaxlib==0.12.0.1
+onnxruntime==1.31.1
+optax==0.2.8
+sentence-transformers==6.2.0
+torch==2.15.0
+transformers==5.22.2

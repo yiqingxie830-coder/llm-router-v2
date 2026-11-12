@@ -1,0 +1,11 @@
+# Core path: data/download.py -> scripts/evaluate.py --demo (Python 3.13, CPU only).
+# Pinned from a clean venv in which the core path ran end to end and reproduced
+# the committed reports byte for byte (2026-11-11).
+langdetect==1.0.9
+matplotlib==3.11.2
+numpy==2.5.4
+pandas==3.1.1
+pyarrow==26.0.1
+scikit-learn==1.9.1
+scipy==1.18.1
+tabulate==0.10.0

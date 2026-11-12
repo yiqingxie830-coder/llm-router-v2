@@ -1,0 +1,11 @@
+# Data files stay out of the repo (rebuilt by the scripts, see README)
+*.parquet
+*.npy
+*.npz
+*.jsonl
+# Exception: R3 semantic labels (group_id + 7 scores only; re-labeling needs an API key and is not reproducible row for row)
+!r3/r3_labels.jsonl
+raw/
+__pycache__/
+.venv/
+.env
