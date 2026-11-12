@@ -60,6 +60,6 @@ python -I scripts/evaluate.py . --demo       # random router APGR ≈ 0.50, rati
 
 ## Reports
 
-Full report: [English](reports/report_en.md) · [Chinese](reports/report_zh.md) (PDF versions alongside). `reports/` keeps only the main write-ups: data, approach 1, approach 2, overhead, and the two test-set reports with their pre-registrations. Step reports, per-router evaluation tables and tuning logs are written by the scripts when you run them (see [scripts/README.md](scripts/README.md)).
+Full report: [English](reports/report_en.md) · [Chinese](reports/report_zh.md). `reports/` keeps only the main write-ups: data, approach 1, approach 2, overhead, and the two test-set reports with their pre-registrations. Step reports, per-router evaluation tables and tuning logs are written by the scripts when you run them (see [scripts/README.md](scripts/README.md)).
 
 Data: [lmarena-ai/arena-human-preference-140k](https://huggingface.co/datasets/lmarena-ai/arena-human-preference-140k), prompts under CC-BY-4.0 (see `data/README.md`). Code: MIT.
