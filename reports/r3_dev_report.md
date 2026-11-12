@@ -1,62 +1,62 @@
-# 方案二（语义标签 R3）开发集结果：和方案一（embedding 匹配）对比
+# Approach 2 (semantic labels, R3) dev-set results, compared with approach 1 (embedding matching)
 
-日期 2026-11-11。按 reports/r3_prereg.md 执行，只用开发集 5 折，测试集没有碰。完整表格见 r3_compare.md（预登记设置）和 r3_compare_ep100.md（敏感性检查）。脚本是 scripts/r3_train.py 和 scripts/r3_eval.py。
+Date 2026-11-11. Run as set out in reports/r3_prereg.md, on the dev set's 5 folds only; the test set was not touched. Full tables are in r3_compare.md (pre-registered settings) and r3_compare_ep100.md (sensitivity check). Scripts: scripts/r3_train.py and scripts/r3_eval.py.
 
-## 一句话结论
-在同样只用口径 ② 的 6,700 张左右训练票时，语义标签（R3）明显好过 embedding（R2-②）。R3 的效果和用 9 万张票训练的全量 R2 打平。所以两种方案的取舍在数据量和成本上：标签省数据，embedding 省每次请求的钱。两者叠加（R2 + R3）对全量 R2 没有额外提升。美元口径下，所有只用 ② 票训练的路由器都没有超过正式基线。
+## In one sentence
+With the same ~6,700 view-② training votes, semantic labels (R3) clearly beat embeddings (R2-②). R3 ties with the full R2 trained on 90k votes. So the choice between the two approaches is about data and cost: labels save data, embeddings save money on every request. Stacking them (R2 + R3) adds nothing over full R2. On the dollar axis, no router trained only on ② votes beats the formal baseline.
 
-## 1. 主指标：口径 ② 按调用比例的 APGR（8,333 张 eval 票，配对 bootstrap 1000 次）
+## 1. Main metric: view ② APGR on the call-share axis (8,333 eval votes, 1000 paired bootstrap resamples)
 
-| 路由器 | 训练票 | APGR | Δ vs 评分差基线 |
+| Router | Training votes | APGR | Δ vs rating-gap baseline |
 |---|---|---|---|
-| 评分差基线 | — | 0.534 | — |
-| R1（方案一，逻辑回归） | 全量约 7.3 万/折 | 0.581 | +0.047 [0.036, 0.058] |
-| R2（方案一，MF） | 全量 | 0.590 | +0.056 [0.042, 0.071] |
-| R2-②（方案一，MF，只用 ② 票） | 约 6,700/折 | 0.540 | +0.006 [−0.002, 0.014] |
-| R2-②，早停上限放宽到 100 轮（敏感性） | 约 6,700/折 | 0.560 | +0.026 [0.014, 0.037] |
-| **R3（方案二）** | 约 6,700/折 | **0.585** | **+0.051 [0.039, 0.066]** |
-| R2 + R3（组合） | 约 6,700/折 | 0.588 | +0.054 [0.042, 0.068] |
+| Rating-gap baseline | — | 0.534 | — |
+| R1 (approach 1, logistic regression) | all, about 73k per fold | 0.581 | +0.047 [0.036, 0.058] |
+| R2 (approach 1, MF) | all | 0.590 | +0.056 [0.042, 0.071] |
+| R2-② (approach 1, MF, ② votes only) | about 6,700 per fold | 0.540 | +0.006 [−0.002, 0.014] |
+| R2-②, early-stopping cap raised to 100 epochs (sensitivity) | about 6,700 per fold | 0.560 | +0.026 [0.014, 0.037] |
+| **R3 (approach 2)** | about 6,700 per fold | **0.585** | **+0.051 [0.039, 0.066]** |
+| R2 + R3 (combined) | about 6,700 per fold | 0.588 | +0.054 [0.042, 0.068] |
 
-R3 在 5 个折里都选了逻辑回归版（R3-LR），C 都是 0.01。0.01 是网格的最小值（正则最强），说明标签特征的有效信息不多，模型偏向简单。R3-MF 的结果接近：+0.049。
+R3 chose the logistic regression version (R3-LR) in all 5 folds, always with C = 0.01. That is the smallest value in the grid (strongest regularization), which suggests the label features carry limited usable information and the model prefers to stay simple. R3-MF comes out close: +0.049.
 
-## 2. 预登记的判定
+## 2. Pre-registered decisions
 
-| 判定 | 结果 | 是否成立 |
+| Decision | Result | Holds? |
 |---|---|---|
-| 方案二有用：R3 的 Δ 区间不含 0 | +0.051 [0.039, 0.066] | 成立 |
-| 方案二比方案一好：R3 − R2-② 区间为正 | 预登记版 +0.046 [0.034, 0.057]；敏感性版 +0.026 [0.016, 0.036] | 成立，两种设置都成立 |
-| 组合有增益：R2+R3 − R2-② 区间为正 | +0.049 [0.038, 0.059]；敏感性版 +0.029 [0.020, 0.039] | 成立 |
-| 参考：R3 − 全量 R2 | −0.005 [−0.014, 0.005] | 打平 |
-| 参考：R2+R3 − 全量 R2 | −0.002 [−0.011, 0.008] | 打平 |
+| Approach 2 is useful: R3's Δ interval excludes 0 | +0.051 [0.039, 0.066] | Yes |
+| Approach 2 beats approach 1: R3 − R2-② interval is positive | pre-registered version +0.046 [0.034, 0.057]; sensitivity version +0.026 [0.016, 0.036] | Yes, under both settings |
+| The combination adds value: R2+R3 − R2-② interval is positive | +0.049 [0.038, 0.059]; sensitivity version +0.029 [0.020, 0.039] | Yes |
+| Reference: R3 − full R2 | −0.005 [−0.014, 0.005] | Tie |
+| Reference: R2+R3 − full R2 | −0.002 [−0.011, 0.008] | Tie |
 
-**早停上限的说明：** 预登记沿用了 R2 的「最多 30 轮」。但只用 6,700 张票时，每轮只有 7 步，R2-② 有 3 个折的入选设置停在第 30 轮，可能训练不足，这对方案一不公平。所以我加了一个敏感性检查：把上限放宽到 100 轮，选参仍然只看内层验证。放宽后 R2-② 从 +0.006 升到 +0.026，但仍然明显不如 R3。结论不变，只是差距从 0.046 缩小到 0.026。R3 自己选的是逻辑回归，不受这个上限影响。
+**On the early-stopping cap:** the pre-registration kept R2's "at most 30 epochs". But with only 6,700 votes each epoch is just 7 steps, and in 3 folds R2-②'s chosen setting stopped at epoch 30, possibly undertrained, which would be unfair to approach 1. So I added a sensitivity check that raises the cap to 100 epochs, with selection still based only on inner validation. With the higher cap R2-② rises from +0.006 to +0.026, but is still clearly behind R3. The conclusion holds; the gap just narrows from 0.046 to 0.026. R3 itself chose logistic regression and is not affected by the cap.
 
-## 3. 美元口径（次要指标）
+## 3. Dollar axis (secondary)
 
-| 路由器 | 美元主案例 ΔAPGR$ vs 正式基线 | 配对内 ΔAPGR$（下限） |
+| Router | Main dollar case ΔAPGR$ vs formal baseline | Within-pair ΔAPGR$ (lower bound) |
 |---|---|---|
-| R1（全量） | +0.011 [0.001, 0.020] | +0.017 [−0.006, 0.046] |
-| R2（全量） | +0.009 [−0.005, 0.022] | +0.013 [−0.012, 0.042] |
+| R1 (all votes) | +0.011 [0.001, 0.020] | +0.017 [−0.006, 0.046] |
+| R2 (all votes) | +0.009 [−0.005, 0.022] | +0.013 [−0.012, 0.042] |
 | R2-② | −0.002 [−0.010, 0.005] | −0.022 [−0.050, 0.002] |
 | R3 | −0.009 [−0.020, 0.001] | −0.016 [−0.036, 0.013] |
 | R2 + R3 | −0.015 [−0.030, −0.003] | −0.023 [−0.045, 0.004] |
 
-只用 ② 票训练的三个路由器，在美元口径下都没有超过正式基线，R2-② 也一样。所以这更像是「只用 ② 票」带来的问题，而不是标签本身的问题。美元排序靠的是每对模型的「赢减输」的绝对大小再除以价格差，这需要把每个模型对的实力和平局率估准。全量票有 9 万张，能估准；② 票只有几千张，估不准。这是推测，没有单独验证。
+None of the three routers trained only on ② votes beats the formal baseline on the dollar axis, and that includes R2-②. So this looks like a problem of "② votes only" rather than of the labels themselves. Dollar ranking relies on the absolute size of "win minus loss" for each model pair divided by its price gap, which needs each pair's strength and tie rate estimated well. 90k votes are enough to estimate them; a few thousand ② votes are not. This is a conjecture and was not tested separately.
 
-## 4. 按 has_single_answer 分组（Δ APGR vs 评分差基线）
+## 4. By has_single_answer (ΔAPGR vs rating-gap baseline)
 
-| 路由器 | 0 分（3,588 票） | 1 分（3,281） | 2 分（1,081） | 3 分（373） |
+| Router | score 0 (3,588 votes) | score 1 (3,281) | score 2 (1,081) | score 3 (373) |
 |---|---|---|---|---|
-| R2（全量） | +0.058 | +0.052 | +0.046 | −0.081 [−0.195, 0.010] |
+| R2 (all votes) | +0.058 | +0.052 | +0.046 | −0.081 [−0.195, 0.010] |
 | R3 | +0.049 | +0.047 | +0.037 | −0.108 [−0.216, −0.028] |
 | R2 + R3 | +0.052 | +0.051 | +0.045 | −0.083 |
 
-- 0 到 2 分三组，方案一和方案二的提升都差不多，没有哪种题明显更适合标签。
-- 3 分（明确有唯一答案）只有 373 票。这一组里评分差基线本身就很强，APGR 0.644，比其他组高一截，所有路由器都不如它，R3 跌得最多。可能的原因是：有唯一答案的题，强模型答对的概率本来就随评分差稳定上升，再看 prompt 反而会引入噪声。样本小，只作为提示。
+- In the three groups with scores 0 to 2, approaches 1 and 2 gain about the same; no kind of prompt is clearly better suited to labels.
+- Score 3 (a single clear answer) has only 373 votes. Here the rating-gap baseline is already strong, APGR 0.644, a notch above the other groups, and every router does worse than it, R3 the most. A possible reason: for questions with one right answer, the chance that the strong model gets it right already rises steadily with the rating gap, and reading the prompt only adds noise. The sample is small, so treat this as a hint.
 
-## 5. 标签和方案一 PC1 坐标的关系（8,259 个开发集 ② prompt，Spearman）
+## 5. Labels vs approach 1's PC1 coordinate (8,259 dev-set ② prompts, Spearman)
 
-| 字段 | 与 t1 | 与 t1（折外） |
+| Field | with t1 | with t1 (out-of-fold) |
 |---|---|---|
 | is_open_ended | −0.48 | −0.46 |
 | is_creative | +0.24 | +0.24 |
@@ -65,18 +65,18 @@ R3 在 5 个折里都选了逻辑回归版（R3-LR），C 都是 0.01。0.01 是
 | has_single_answer | +0.15 | +0.15 |
 | difficulty | −0.11 | −0.08 |
 
-- is_open_ended 各档的 t1（折外）均值是单调的：0 分 +0.67，1 分 +0.33，2 分 −0.34，3 分 −0.69。越开放，t1 越低，强档越占优，正好对上 PC1「开放式咨询 ↔ 代码与确定答案题」的命名。
-- 按 task_type 看，t1 均值从低到高依次是：advice −0.74、factual_qa −0.25、chitchat +0.25、writing +0.47、other +0.49、translation +0.60、math +0.79、code +0.95。
-- difficulty 和 PC1 几乎无关（−0.08），和 PC2 相关（+0.35），与之前「PC1 不是难易」的结论一致。
+- Mean out-of-fold t1 is monotone in is_open_ended: score 0 +0.67, 1 +0.33, 2 −0.34, 3 −0.69. The more open-ended, the lower t1 and the bigger the strong tier's edge, which matches PC1's name "open-ended advice ↔ code and definite-answer questions".
+- By task_type, mean t1 from low to high: advice −0.74, factual_qa −0.25, chitchat +0.25, writing +0.47, other +0.49, translation +0.60, math +0.79, code +0.95.
+- difficulty is almost unrelated to PC1 (−0.08) and correlates with PC2 (+0.35), consistent with the earlier finding that "PC1 is not difficulty".
 
-这说明 7 个人工定义的字段，大体复现了 embedding 学到的主轴。这也解释了为什么 R3 只用很少的票就能追上 R2：它直接拿到了「这题是开放咨询还是确定答案题」这个最有用的信号，不需要从数据里学。
+So the 7 hand-defined fields largely reproduce the main axis the embedding learned. That also explains why R3 catches up with R2 on very few votes: it gets the most useful signal, "is this open-ended advice or a question with a definite answer", directly instead of learning it from data.
 
-## 6. 成本
+## 6. Cost
 
-R3 线上每次请求要调用一次 Haiku，每千次多花 $0.22，中位延迟 1.1 秒。R1、R2 每千次约 $0.02，延迟 0.19 秒（4 核 CPU）。在质量打平的情况下，R3 每次请求更贵，所以它的优势只在训练数据少的时候。
+In production R3 calls Haiku once per request: $0.22 extra per 1,000 requests and 1.1 s median latency. R1 and R2 cost about $0.02 per 1,000 with 0.19 s latency (4 CPU cores). With quality tied, R3 is more expensive per request, so its advantage is only when training data is scarce.
 
-## 7. 局限
-- 训练只用了 ② 票，美元口径的结论受这一点影响（见第 3 节）。
-- R3-LR 的 C 落在网格边缘 0.01。按预登记不再扩网格，只报告。
-- 11 条拒答的 prompt 用训练折众数填补，占比 0.1%。
-- has_single_answer = 3 只有 373 票，区间很宽。
+## 7. Limitations
+- Training used only ② votes, which affects the dollar-axis conclusion (section 3).
+- R3-LR's C sits at the grid edge, 0.01. As pre-registered, the grid was not extended; this is only reported.
+- The 11 refused prompts were filled with the training-fold mode, 0.1% of prompts.
+- has_single_answer = 3 has only 373 votes and very wide intervals.

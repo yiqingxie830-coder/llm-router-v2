@@ -1,21 +1,25 @@
-"""cost_table.py — 阶段 2 Step 1: 每票美元成本 + "高分方是否更贵" 的筛选
+"""cost_table.py — Stage 2 Step 1: dollar cost per vote + the "is the higher-rated model pricier" filter
 
-决策 (Yiqing 2026-11-09)
-------------------------
-1. 价格表 data/model_prices.csv: 第一方官方 API 标价 (USD / 百万 token, 标准档, 不含缓存/批量折扣)。
-   开源模型没有第一方价时, Llama 统一用 AWS Bedrock, 其余用 LiteLLM 收录的托管商价。
-   实验版/匿名模型 (没公开卖) 标"无价", 不进美元口径。
-   o3 在 2025-06-10 降价 80%, 按投票日期取价。
-2. 每票成本 (只用来记账, 不当路由特征): 输入价 × 该侧上下文 token + 输出价 × 该侧回答 token。
-   token 数来自原始数据 conv_metadata (Arena 用同一个分词器统计, 不是各家自己的分词器;
-   思考模型的隐藏推理 token 不在里面, 所以 o3 / R1 / thinking 版的真实成本被低估)。
-3. "更贵方" 按模型定义, 不按单票: 每个模型的"典型单次成本" = 开发集 (90%) 里它所有票的成本中位数。
-   单票成本里有回答长度 (未来信息), 用它筛票会让评估集本身依赖未来信息, 所以不用。
-4. 美元口径只纳入 "高分方 典型成本 > 低分方" 的票; 其余票 (便宜模型反而评分更高) 单独统计, 不进曲线。
-5. 口径 ② 美元主案例 = 强档 vs 弱档中满足第 4 条的全部配对 (贵的强档模型 vs 便宜的弱档模型), 作为一组。
+Decisions (2026-11-09)
+----------------------
+1. Price table data/model_prices.csv: first-party official API list prices (USD per million tokens, standard tier,
+   no cache / batch discounts). Open models without a first-party price: Llama uses AWS Bedrock, the rest use the
+   hosted price listed by LiteLLM. Experimental / anonymous models (not sold publicly) are marked "no price" and
+   stay out of the dollar view. o3 dropped its price by 80% on 2025-06-10, so the price follows the vote date.
+2. Cost per vote (bookkeeping only, never a routing feature): input price × that side's context tokens
+   + output price × that side's answer tokens. Token counts come from the raw conv_metadata (Arena counts them
+   with one tokenizer, not each provider's own; hidden reasoning tokens of thinking models are not included,
+   so the true cost of o3 / R1 / thinking variants is understated).
+3. "Pricier side" is defined per model, not per vote: each model's "typical cost per request" = median cost of
+   all its votes in the dev set (90%). Per-vote cost contains the answer length (future information); filtering
+   votes on it would make the evaluation set itself depend on future information, so it is not used.
+4. The dollar view only includes votes where the higher-rated model's typical cost > the lower-rated model's;
+   the rest (the cheaper model is rated higher) are counted separately and stay out of the curves.
+5. View ② main dollar case = all strong-vs-weak pairs that satisfy rule 4 (pricier strong model vs cheaper
+   weak model), taken as one group.
 
-用法: python -I cost_table.py <v2 根目录> <原始 140k 目录>
-产出: data/vote_costs.parquet, data/model_cost.csv, reports/stage2_step1_costs.md
+Usage: python -I cost_table.py <repo root> <raw 140k directory>
+Writes: data/vote_costs.parquet, data/model_cost.csv
 """
 import sys
 from pathlib import Path
@@ -27,7 +31,7 @@ import pyarrow.parquet as pq
 root, raw = Path(sys.argv[1]), Path(sys.argv[2])
 O3_CUT = pd.Timestamp("2025-06-10")
 
-# ---------- 1. 原始 token 数 ----------
+# ---------- 1. raw token counts ----------
 clean = pd.read_parquet(root / "data/arena_labeled.parquet",
                         columns=["id", "model_a", "model_b", "timestamp", "split", "fold", "is_strong_vs_weak"])
 keep = set(clean.id)
@@ -42,12 +46,12 @@ for f in sorted(raw.glob("*.parquet")):
                                "turns": m["turns"].values}))
 tok = pd.concat(parts)
 d = clean.merge(tok, on="id", how="left")
-assert d.in_a.notna().all(), "部分票在原始数据里找不到 token 数"
+assert d.in_a.notna().all(), "some votes have no token counts in the raw data"
 
-# ---------- 2. 每票两侧成本 ----------
+# ---------- 2. cost of both sides per vote ----------
 pr = pd.read_csv(root / "data/model_prices.csv").set_index("model")
 missing = (set(d.model_a) | set(d.model_b)) - set(pr.index)
-assert not missing, f"价格表缺模型: {missing}"
+assert not missing, f"price table is missing models: {missing}"
 
 
 def side_cost(model, n_in, n_out, ts):
@@ -62,7 +66,7 @@ def side_cost(model, n_in, n_out, ts):
 d["cost_a"] = side_cost(d.model_a, d.in_a, d.out_a, d.timestamp)
 d["cost_b"] = side_cost(d.model_b, d.in_b, d.out_b, d.timestamp)
 
-# ---------- 3. 每个模型的典型单次成本 (只用开发集) ----------
+# ---------- 3. typical cost per request for each model (dev set only) ----------
 long = pd.concat([d[["model_a", "cost_a", "out_a", "split"]].set_axis(["model", "cost", "out_tok", "split"], axis=1),
                   d[["model_b", "cost_b", "out_b", "split"]].set_axis(["model", "cost", "out_tok", "split"], axis=1)])
 dev = long[long.split != "test"]
@@ -76,4 +80,4 @@ d["typ_a"] = d.model_a.map(mc.typical_cost)
 d["typ_b"] = d.model_b.map(mc.typical_cost)
 d[["id", "in_a", "out_a", "in_b", "out_b", "turns", "cost_a", "cost_b", "typ_a", "typ_b"]].to_parquet(
     root / "data/vote_costs.parquet", index=False)
-print("写出 data/vote_costs.parquet", len(d), "票;  data/model_cost.csv", len(mc), "个模型")
+print("wrote data/vote_costs.parquet", len(d), "votes;  data/model_cost.csv", len(mc), "models")

@@ -1,26 +1,33 @@
-"""evaluate_cost.py — 阶段 2 Step 1: 美元成本口径的评估 (在 evaluate.py 的 PGR 定义上把横轴换成美元)
+"""evaluate_cost.py — Stage 2 Step 1: evaluation on the dollar axis (evaluate.py's PGR, with dollars on the x-axis)
 
-和 evaluate.py 的区别
---------------------
-- 只用 "高分方典型成本 > 低分方" 的票 (cost_table.py 第 4 条); 其余票只统计比例。
-- 横轴 = 归一化美元成本: (这一批请求花的钱 - 全发低分方的钱) / (全发高分方的钱 - 全发低分方的钱)。
-  每票多花的钱 = 高分方实际成本 - 低分方实际成本, 不同票不一样 (长回答、贵模型多花得多)。
-  同时报每千次请求的绝对美元数。
-- 排序规则 (Yiqing 2026-11-09 定): 美元口径下所有路由器统一按 "预期质量提升 ÷ 增量成本" 排序,
-  key = (2p - 1) / max(典型成本差, FLOOR)。p = 路由器输出的 P(高分方赢), 发高分方比发低分方
-  预期多得 p - (1 - p) = 2p - 1 分质量; 典型成本差 = 高分方与低分方各自典型单次成本之差 (见 cost_table.py)。
-  FLOOR = 每千次请求 0.25 美元 (约为成本差的第 5 百分位), 防止价格几乎一样的模型对比值爆炸;
-  报告附 FLOOR 取 0.1 / 1.0 和取对数的敏感性。
-- 正式基线 = 评分差 ÷ 价格差 (p 取 BT 评分差推出的胜率)。"评分差基线" (只按 p 排序, 不看价格) 保留为对照行。
-- 配对内指标 (仅美元主案例): 按模型对分组, 每组内单独算 APGR$, 再按票数加权平均。组内价格差固定,
-  所以这个数只衡量路由器"在同一对模型里靠 prompt 排序"的能力。评分差类基线在组内只剩跨折的评分抖动,
-  预期 ≈ 随机。只用票数 ≥ 30 的模型对; 组内质量差距 (全发强 - 全发弱) < 0.05 的组 APGR 不稳定, 加权平均时跳过,
-  同时报不会爆炸的合并版 (各组曲线下增益之和 ÷ 各组质量差距之和, 等价于按 票数×质量差距 加权)。
-- 单票实际多花的钱偶尔为负 (贵模型这次答得短), 累计成本取"到目前为止的最大值"保证横轴单调 (PGR 本身不做单调化)。
-- APGR$ = PGR 对归一化美元成本的曲线下面积; CPT$(50%) = PGR 到 50% 时花掉的归一化成本。
-- 每个口径同时给出"按调用比例"的旧 APGR, 方便和阶段 1 对照。
+Differences from evaluate.py
+----------------------------
+- Uses only votes where the higher-rated model's typical cost > the lower-rated model's (rule 4 in cost_table.py);
+  the other votes are only counted.
+- x-axis = normalized dollar cost: (spend of this batch - spend if all go to the lower-rated model)
+  / (spend if all go to the higher-rated model - spend if all go to the lower-rated model).
+  The extra spend per vote = actual cost of the higher-rated model - actual cost of the lower-rated model,
+  which differs by vote (long answers and pricey models cost more). Absolute dollars per 1,000 requests are also reported.
+- Ranking rule (set 2026-11-09): on the dollar axis every router is ranked by "expected quality gain ÷ extra cost",
+  key = (2p - 1) / max(typical cost gap, FLOOR). p = the router's P(higher-rated model wins); routing to the
+  higher-rated model instead of the lower-rated one gains p - (1 - p) = 2p - 1 in expected quality; typical cost gap
+  = difference of the two models' typical cost per request (see cost_table.py).
+  FLOOR = $0.25 per 1,000 requests (about the 5th percentile of the cost gap), so near-equal prices do not blow up
+  the ratio; the report adds sensitivity for FLOOR = 0.1 / 1.0 and for a log version.
+- Formal baseline = rating gap ÷ price gap (p from the BT rating gap). The "rating-gap baseline" (ranks by p only,
+  ignores price) is kept as a control row.
+- Within-pair metric (main dollar case only): group by model pair, compute APGR$ inside each group, then average
+  weighted by votes. The price gap is fixed inside a group, so this only measures how well the router ranks prompts
+  within one pair of models. Rating-gap baselines only keep cross-fold rating jitter inside a group, so they are
+  expected to be ≈ random. Only pairs with ≥ 30 votes; groups whose quality gap (all strong - all weak) < 0.05 have
+  unstable APGR and are skipped in the weighted mean. A pooled version that cannot blow up is also reported
+  (sum of each group's area gain ÷ sum of each group's quality gap, i.e. weighted by votes × quality gap).
+- The extra spend of a single vote is occasionally negative (the pricey model answered briefly this time); the
+  cumulative cost uses the running maximum so the x-axis is monotone (PGR itself is not made monotone).
+- APGR$ = area under PGR against normalized dollar cost; CPT$(50%) = normalized cost spent when PGR reaches 50%.
+- Each view also reports the old APGR on the call-share axis, for comparison with stage 1.
 
-用法: python -I evaluate_cost.py <v2 根目录> [--demo | <预测文件> <名字>] [--final]
+Usage: python -I evaluate_cost.py <repo root> [--demo | <prediction file> <name>] [--final]
 """
 import json
 import sys
@@ -33,8 +40,8 @@ N_BOOT, SEED = 1000, 2026
 GRID = np.linspace(0, 1, 11)
 FINE = np.linspace(0, 1, 101)
 BUCKETS = [(0, 50, "<50"), (50, 150, "50–150"), (150, np.inf, ">150")]
-FLOOR = 0.25 / 1000          # 美元 / 单次请求
-BASE = "评分差÷价格差 (正式基线, 分桶赢/平/输)"
+FLOOR = 0.25 / 1000          # dollars per request
+BASE = "gap ÷ price gap (formal baseline, bucketed win/tie/loss)"
 MIN_PAIR, MIN_GAP = 30, 0.05
 
 root = Path(sys.argv[1])
@@ -55,11 +62,11 @@ ev["cost_lo"] = np.where(hi_is_a, ev.cost_b, ev.cost_a)
 ev["typ_hi"] = np.where(hi_is_a, ev.typ_a, ev.typ_b)
 ev["typ_lo"] = np.where(hi_is_a, ev.typ_b, ev.typ_a)
 ev["cost_class"] = np.select([ev.typ_hi.isna() | ev.typ_lo.isna(), ev.typ_hi > ev.typ_lo],
-                             ["无价", "高分方更贵"], "高分方更便宜或一样")
+                             ["no price", "higher-rated costs more"], "higher-rated costs less or same")
 
 
 def curve(q, p, w, extra, rng):
-    """返回 (按美元的 PGR 网格, 按调用比例的 PGR 网格, r_s, r_w, 全发低分方成本, 全发高分方成本)。"""
+    """Return (PGR grid on the dollar axis, PGR grid on the call-share axis, r_s, r_w)."""
     order = np.lexsort((rng.random(len(p)), -p))
     qs, ws, es = q[order], w[order], extra[order]
     W = ws.sum()
@@ -108,20 +115,20 @@ def evaluate(d, routers):
     base = np.array(boots[BASE])
     for name in routers:
         b = np.array(boots[name])
-        row = {"APGR_按调用比例": frac_apgr[name]}
+        row = {"APGR_by_call_share": frac_apgr[name]}
         for j, m in enumerate(["APGR$", "CPT$50", "CPT$80"]):
             lo, hi = np.nanpercentile(b[:, j], [2.5, 97.5])
             row[m] = [round(float(point[name][j]), 3), round(float(lo), 3), round(float(hi), 3)]
         if name != BASE:
             dlt = b[:, 0] - base[:, 0]
-            row["ΔAPGR$_vs_正式基线"] = [round(float(point[name][0] - point[BASE][0]), 3),
+            row["ΔAPGR$_vs_formal_baseline"] = [round(float(point[name][0] - point[BASE][0]), 3),
                                      *np.percentile(dlt, [2.5, 97.5]).round(3).tolist()]
         out["metrics"][name] = row
     return out
 
 
 def within_pairs(d, routers):
-    """配对内 APGR$: 每个模型对单独算, 再加权。返回点估计、区间和相对正式基线的提升。"""
+    """Within-pair APGR$: computed per model pair, then weighted. Returns point estimates, intervals and gains over the formal baseline."""
     pair = (d.hi_model + " | " + d.lo_model).values
     names, pidx = np.unique(pair, return_inverse=True)
     keep = np.bincount(pidx) >= MIN_PAIR
@@ -168,7 +175,7 @@ def within_pairs(d, routers):
     for name in routers:
         b = np.array(boots[name])
         row = {}
-        for j, lab in enumerate(["配对内APGR$ (按票数加权)", "配对内APGR$ (合并版)"]):
+        for j, lab in enumerate(["within-pair APGR$ (vote-weighted)", "within-pair APGR$ (pooled)"]):
             row[lab] = [round(float(point[name][j]), 3), *np.percentile(b[:, j], [2.5, 97.5]).round(3).tolist()]
             if name != BASE:
                 row["Δ " + lab] = [round(float(point[name][j] - point[BASE][j]), 3),
@@ -177,68 +184,68 @@ def within_pairs(d, routers):
     return out
 
 
-def sensitivity(d, p_bt):  # p_bt: 正式基线的 p (2p−1 = 预期质量提升)
-    """正式基线对 FLOOR 和取对数的敏感性 (只报点估计)。"""
+def sensitivity(d, p_bt):  # p_bt: the formal baseline's p (2p−1 = expected quality gain)
+    """Sensitivity of the formal baseline to FLOOR and to a log version (point estimates only)."""
     dt = (d.typ_hi - d.typ_lo).values
     q, extra = d.q_hi.values, (d.cost_hi - d.cost_lo).values
-    variants = {f"下限 ${f}/千次": (2 * p_bt - 1) / np.maximum(dt, f / 1000) for f in (0.1, 0.25, 1.0)}
-    variants["取对数: (2p-1) / log(1 + 成本差/下限)"] = (2 * p_bt - 1) / np.log1p(dt / FLOOR)
-    out = {"触到下限的票占比": round(float((dt < FLOOR).mean()), 4)}
+    variants = {f"floor ${f}/1k": (2 * p_bt - 1) / np.maximum(dt, f / 1000) for f in (0.1, 0.25, 1.0)}
+    variants["log: (2p-1) / log(1 + cost gap/floor)"] = (2 * p_bt - 1) / np.log1p(dt / FLOOR)
+    out = {"share of votes at the floor": round(float((dt < FLOOR).mean()), 4)}
     for k, v in variants.items():
         out[k] = round(float(metrics(curve(q, v, np.ones(len(q)), extra, np.random.default_rng(SEED))[0])[0]), 3)
     return out
 
 
 def run_all(d, preds):
-    m0 = (d.cost_class == "高分方更贵").values
+    m0 = (d.cost_class == "higher-rated costs more").values
     d, preds = d[m0], {k: v[m0] for k, v in preds.items()}
-    res = {"① 合并 (美元)": evaluate(d, preds)}
+    res = {"① pooled ($)": evaluate(d, preds)}
     for lo, hi, lab in BUCKETS:
         m = ((d.rating_gap >= lo) & (d.rating_gap < hi)).values
-        res[f"① 评分差 {lab} (美元)"] = evaluate(d[m], {k: v[m] for k, v in preds.items()})
+        res[f"① gap {lab} ($)"] = evaluate(d[m], {k: v[m] for k, v in preds.items()})
     m = d.is_strong_vs_weak.values
-    res["② 贵强档 vs 便宜弱档 (美元主案例)"] = evaluate(d[m], {k: v[m] for k, v in preds.items()})
-    res["② 配对内"] = within_pairs(d[m], {k: v[m] for k, v in preds.items()})
+    res["② pricier strong vs cheaper weak (main dollar case)"] = evaluate(d[m], {k: v[m] for k, v in preds.items()})
+    res["② within pair"] = within_pairs(d[m], {k: v[m] for k, v in preds.items()})
     p_bt = 1 / (1 + 10 ** (-d.rating_gap.values / 400))
     pb = d.p_tie_bucket.values
-    res["正式基线敏感性"] = {"① 合并": sensitivity(d, pb), "② 美元主案例": sensitivity(d[m], pb[m])}
+    res["formal baseline sensitivity"] = {"① pooled": sensitivity(d, pb), "② main dollar case": sensitivity(d[m], pb[m])}
     return res
 
 
 def report(res, name):
-    lines = [f"# 美元口径评估: {name} ({'测试集' if use_final else '开发集 5 折, 合并各折 eval 票'})", "",
-             "只含高分方典型成本更高的票。格式: 点估计 [95% 区间], bootstrap 1000 次按 prompt 组重采样。",
-             "APGR$ / CPT$ 的横轴是归一化美元成本 (0 = 全发低分方, 1 = 全发高分方)。", ""]
+    lines = [f"# Dollar-axis evaluation: {name} ({'test set' if use_final else 'dev set 5-fold, eval votes of all folds combined'})", "",
+             "Only votes where the higher-rated model has the higher typical cost. Format: point estimate [95% interval], 1000 bootstrap resamples by prompt group.",
+             "The x-axis of APGR$ / CPT$ is normalized dollar cost (0 = all to the lower-rated model, 1 = all to the higher-rated model).", ""]
     fmt = lambda v: f"{v[0]} [{v[1]}, {v[2]}]"
     for view, r in res.items():
-        if view == "② 配对内":
-            labs = ["配对内APGR$ (按票数加权)", "配对内APGR$ (合并版)"]
-            lines += [f"## ② 配对内 APGR$  (票数 ≥ {MIN_PAIR} 的 {r['n_pairs']} 个模型对, 共 {r['n_votes']} 票)", "",
-                      "每个模型对内单独算 APGR$ 再加权; 组内价格差固定, 只看靠 prompt 排序的能力。"
-                      f"按票数加权版跳过组内质量差距 < {MIN_GAP} 的组; 合并版按 票数×质量差距 加权, 不会爆炸。", "",
-                      "| 路由器 | 按票数加权 | Δ vs 正式基线 | 合并版 | Δ vs 正式基线 |", "|---|---|---|---|---|"]
+        if view == "② within pair":
+            labs = ["within-pair APGR$ (vote-weighted)", "within-pair APGR$ (pooled)"]
+            lines += [f"## ② within-pair APGR$  ({r['n_pairs']} model pairs with ≥ {MIN_PAIR} votes, {r['n_votes']} votes)", "",
+                      "APGR$ is computed inside each model pair and then weighted; the price gap is fixed within a pair, so this only measures ranking by prompt. "
+                      f"The vote-weighted version skips pairs whose quality gap < {MIN_GAP}; the pooled version weights by votes × quality gap and cannot blow up.", "",
+                      "| Router | vote-weighted | Δ vs formal baseline | pooled | Δ vs formal baseline |", "|---|---|---|---|---|"]
             for rn, m in r["metrics"].items():
                 d1 = fmt(m["Δ " + labs[0]]) if "Δ " + labs[0] in m else "—"
                 d2 = fmt(m["Δ " + labs[1]]) if "Δ " + labs[1] in m else "—"
                 lines.append(f"| {rn} | {fmt(m[labs[0]])} | {d1} | {fmt(m[labs[1]])} | {d2} |")
             lines.append("")
             continue
-        if view == "正式基线敏感性":
-            lines += ["## 正式基线对价格差下限的敏感性 (APGR$ 点估计)", "",
-                      "| 口径 | " + " | ".join(k for k in r["① 合并"]) + " |",
-                      "|---" * (len(r["① 合并"]) + 1) + "|"]
+        if view == "formal baseline sensitivity":
+            lines += ["## Sensitivity of the formal baseline to the price-gap floor (APGR$ point estimate)", "",
+                      "| View | " + " | ".join(k for k in r["① pooled"]) + " |",
+                      "|---" * (len(r["① pooled"]) + 1) + "|"]
             for v, row in r.items():
                 lines.append(f"| {v} | " + " | ".join(str(x) for x in row.values()) + " |")
             lines.append("")
             continue
-        lines += [f"## {view}  (票数 {r['n_votes']}; 每千次请求: 全发低分方 ${r['usd_per_1k_all_lo']}, "
-                  f"全发高分方 ${r['usd_per_1k_all_hi']})", "",
-                  "| 路由器 | APGR$ | CPT$(50%) | CPT$(80%) | ΔAPGR$ vs 正式基线 | 对照: 按调用比例的 APGR |",
+        lines += [f"## {view}  ({r['n_votes']} votes; per 1,000 requests: all to lower-rated ${r['usd_per_1k_all_lo']}, "
+                  f"all to higher-rated ${r['usd_per_1k_all_hi']})", "",
+                  "| Router | APGR$ | CPT$(50%) | CPT$(80%) | ΔAPGR$ vs formal baseline | For reference: APGR on call share |",
                   "|---|---|---|---|---|---|"]
         for rn, m in r["metrics"].items():
-            dl = fmt(m["ΔAPGR$_vs_正式基线"]) if "ΔAPGR$_vs_正式基线" in m else "—"
+            dl = fmt(m["ΔAPGR$_vs_formal_baseline"]) if "ΔAPGR$_vs_formal_baseline" in m else "—"
             lines.append(f"| {rn} | {fmt(m['APGR$'])} | {fmt(m['CPT$50'])} | {fmt(m['CPT$80'])} | {dl} | "
-                         f"{m['APGR_按调用比例']} |")
+                         f"{m['APGR_by_call_share']} |")
         lines.append("")
     return "\n".join(lines)
 
@@ -247,62 +254,58 @@ def plot(res, path):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    import matplotlib.font_manager as fm
-    cjk = [f.name for f in fm.fontManager.ttflist if any(k in f.name for k in ("CJK", "Hei", "WenQuanYi", "Noto Sans SC"))]
-    if cjk:
-        matplotlib.rcParams["font.sans-serif"] = [cjk[0]]
     ink, muted, grid = "#2b2b29", "#6b6a63", "#e1e0d9"
     colors = ["#2a78d6", "#eb6834", "#1baf7a", "#9b59b6", "#888888", "#d4a017"]
-    views = ["① 合并 (美元)", "② 贵强档 vs 便宜弱档 (美元主案例)"]
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.6), dpi=150, facecolor="#fcfcfb")
+    views = ["① pooled ($)", "② pricier strong vs cheaper weak (main dollar case)"]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6.2), dpi=150, facecolor="#fcfcfb")
     for ax, v in zip(axes, views):
         r = res[v]
         lo, hi = r["usd_per_1k_all_lo"], r["usd_per_1k_all_hi"]
         x = lo + FINE * (hi - lo)
         ax.set_facecolor("#fcfcfb")
-        ax.plot([lo, hi], [0, 1], color=muted, lw=1, ls="--", label="随机期望")
+        ax.plot([lo, hi], [0, 1], color=muted, lw=1, ls="--", label="random expectation")
         for (rn, c), col in zip(r["curves"].items(), colors):
             ax.plot(x, c, color=col, lw=2, label=f"{rn}  APGR$ {r['metrics'][rn]['APGR$'][0]}")
         ax.scatter([lo, hi], [0, 1], s=50, color=ink, zorder=5)
-        ax.annotate("全发低分方", (lo, 0), (6, 8), textcoords="offset points", color=ink, fontsize=9)
-        ax.annotate("全发高分方", (hi, 1), (-60, -14), textcoords="offset points", color=ink, fontsize=9)
-        ax.set_title(f"{v} (n={r['n_votes']})", color=ink, fontsize=11, loc="left")
-        ax.set_xlabel("每千次请求成本 (美元)", color=muted)
+        ax.annotate("all lower-rated", (lo, 0), (6, 8), textcoords="offset points", color=ink, fontsize=9)
+        ax.annotate("all higher-rated", (hi, 1), (-80, -14), textcoords="offset points", color=ink, fontsize=9)
+        ax.set_title(f"{v.replace('pricier strong vs cheaper weak (main dollar case)', 'main dollar case')} (n={r['n_votes']})", color=ink, fontsize=11, loc="left")
+        ax.set_xlabel("cost per 1,000 requests (USD)", color=muted)
         ax.set_ylabel("PGR", color=muted)
         ax.grid(color=grid, lw=0.6)
         for s in ax.spines.values():
             s.set_color(grid)
         ax.tick_params(colors=muted)
-        ax.legend(frameon=False, fontsize=8, labelcolor=ink, loc="lower right")
+        ax.legend(frameon=False, fontsize=7.5, labelcolor=ink, loc="upper left", bbox_to_anchor=(0, -0.14))
     fig.tight_layout()
     fig.savefig(path, facecolor=fig.get_facecolor())
 
 
 if __name__ == "__main__":
     if args and args[0] == "--demo":
-        name, preds = "demo_美元口径基线", {}
+        name, preds = "demo_dollar_baselines", {}
     else:
         pf, name = args[0], args[1]
         pr = pd.read_parquet(pf) if pf.endswith(".parquet") else pd.read_csv(pf)
         ev = ev.merge(pr[["context", "id", "p"]], on=["context", "id"], how="left")
-        assert ev.p.notna().all(), "预测文件缺少部分评估票"
+        assert ev.p.notna().all(), "prediction file is missing some eval votes"
         preds = {name: ev.p.values}
     rng = np.random.default_rng(SEED)
     p_bt = 1 / (1 + 10 ** (-ev.rating_gap.values / 400))
     dt = np.maximum((ev.typ_hi - ev.typ_lo).values, FLOOR)
-    key = lambda p: (2 * p - 1) / dt       # 预期质量提升 ÷ 增量成本
-    # 正式基线 (Yiqing 2026-11-10): 带平局的评分差基线, 预期提升 = P(赢) − P(输), 来自 tie_baselines.py
-    # (分桶经验比例, 只用各情境 train 票拟合)。BT 半票版和三分类逻辑回归版作为对照行保留。
+    key = lambda p: (2 * p - 1) / dt       # expected quality gain ÷ extra cost
+    # Formal baseline (set 2026-11-10): rating-gap baseline with ties, expected gain = P(win) − P(loss), from tie_baselines.py
+    # (empirical bucket shares, fitted on each context's train votes only). The BT half-vote and 3-class logistic versions stay as control rows.
     sfx = "_final" if use_final else ""
     for tag, col in (("bucket", "p_tie_bucket"), ("mlogit", "p_tie_mlogit")):
         b = pd.read_parquet(root / f"preds/base_tie_{tag}{sfx}.parquet")[["context", "id", "p"]].rename(columns={"p": col})
         ev = ev.merge(b, on=["context", "id"], how="left")
         assert ev[col].notna().all()
-    preds = {"随机路由": rng.random(len(ev)),
-             "评分差基线 (对照, 不看价格)": p_bt,
+    preds = {"random": rng.random(len(ev)),
+             "rating-gap baseline (control, ignores price)": p_bt,
              BASE: key(ev.p_tie_bucket.values),
-             "评分差÷价格差 (对照: 三分类逻辑回归版)": key(ev.p_tie_mlogit.values),
-             "评分差÷价格差 (对照: BT 半票版, 旧正式基线)": key(p_bt),
+             "gap ÷ price gap (control: 3-class logistic version)": key(ev.p_tie_mlogit.values),
+             "gap ÷ price gap (control: BT half-vote version, former formal baseline)": key(p_bt),
              **{k: key(v) for k, v in preds.items()}}
     res = run_all(ev, preds)
     out = root / "reports" / f"eval_{name}{'_final' if use_final else ''}"

@@ -1,55 +1,55 @@
-# 评估: R1_gap_id_e (开发集 5 折交叉验证, 合并各折 eval 票)
+# Evaluation: R1_gap_id_e (dev set 5-fold CV, eval votes of all folds combined)
 
-格式: 点估计 [95% 区间]; bootstrap 1000 次按 prompt 组重采样。
+Format: point estimate [95% interval]; 1000 bootstrap resamples by prompt group.
 
-> 口径 ① 合并数字受 Arena 配对分布影响, 不代表任何单一产品场景; 口径 ② 和分桶结果才是具体场景的参考。
+> The pooled view ① depends on Arena's pair sampling and does not represent any single product scenario; view ② and the buckets are the scenario references.
 
-## ① 合并  (票数 90923, prompt 组 85835; 全发强质量 0.6028, 全发弱质量 0.3972)
+## ① pooled  (90923 votes, 85835 prompt groups; quality all-strong 0.6028, all-weak 0.3972)
 
-| 路由器 | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs 评分差基线 |
+| Router | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs rating-gap baseline |
 |---|---|---|---|---|
-| 随机路由 | 0.497 [0.489, 0.505] | 0.52 [0.51, 0.53] | 0.81 [0.8, 0.82] | -0.171 [-0.183, -0.16] |
-| 评分差基线 | 0.668 [0.66, 0.677] | 0.28 [0.27, 0.29] | 0.57 [0.55, 0.59] | — |
+| random | 0.497 [0.489, 0.505] | 0.52 [0.51, 0.53] | 0.81 [0.8, 0.82] | -0.171 [-0.183, -0.16] |
+| rating-gap baseline | 0.668 [0.66, 0.677] | 0.28 [0.27, 0.29] | 0.57 [0.55, 0.59] | — |
 | R1_gap_id_e | 0.681 [0.672, 0.69] | 0.26 [0.25, 0.27] | 0.55 [0.53, 0.58] | 0.013 [0.009, 0.017] |
 
-端点基线: 全发弱 = (强调用 0%, PGR 0); 全发强 = (强调用 100%, PGR 1)。
+End points: all weak = (0% strong calls, PGR 0); all strong = (100% strong calls, PGR 1).
 
-## ① 评分差 <50  (票数 36414, prompt 组 35240; 全发强质量 0.5457, 全发弱质量 0.4543)
+## ① gap <50  (36414 votes, 35240 prompt groups; quality all-strong 0.5457, all-weak 0.4543)
 
-| 路由器 | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs 评分差基线 |
+| Router | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs rating-gap baseline |
 |---|---|---|---|---|
-| 随机路由 | 0.485 [0.458, 0.511] | 0.53 [0.46, 0.58] | 0.83 [0.8, 0.86] | -0.16 [-0.201, -0.12] |
-| 评分差基线 | 0.645 [0.617, 0.675] | 0.32 [0.28, 0.36] | 0.59 [0.51, 0.66] | — |
+| random | 0.485 [0.458, 0.511] | 0.53 [0.46, 0.58] | 0.83 [0.8, 0.86] | -0.16 [-0.201, -0.12] |
+| rating-gap baseline | 0.645 [0.617, 0.675] | 0.32 [0.28, 0.36] | 0.59 [0.51, 0.66] | — |
 | R1_gap_id_e | 0.63 [0.602, 0.659] | 0.32 [0.26, 0.36] | 0.65 [0.56, 0.72] | -0.015 [-0.044, 0.014] |
 
-端点基线: 全发弱 = (强调用 0%, PGR 0); 全发强 = (强调用 100%, PGR 1)。
+End points: all weak = (0% strong calls, PGR 0); all strong = (100% strong calls, PGR 1).
 
-## ① 评分差 50–150  (票数 45867, prompt 组 44200; 全发强质量 0.6249, 全发弱质量 0.3751)
+## ① gap 50–150  (45867 votes, 44200 prompt groups; quality all-strong 0.6249, all-weak 0.3751)
 
-| 路由器 | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs 评分差基线 |
+| Router | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs rating-gap baseline |
 |---|---|---|---|---|
-| 随机路由 | 0.5 [0.492, 0.509] | 0.52 [0.5, 0.53] | 0.8 [0.79, 0.81] | -0.08 [-0.092, -0.067] |
-| 评分差基线 | 0.58 [0.571, 0.589] | 0.39 [0.37, 0.4] | 0.71 [0.69, 0.73] | — |
+| random | 0.5 [0.492, 0.509] | 0.52 [0.5, 0.53] | 0.8 [0.79, 0.81] | -0.08 [-0.092, -0.067] |
+| rating-gap baseline | 0.58 [0.571, 0.589] | 0.39 [0.37, 0.4] | 0.71 [0.69, 0.73] | — |
 | R1_gap_id_e | 0.613 [0.603, 0.622] | 0.34 [0.33, 0.36] | 0.67 [0.65, 0.69] | 0.033 [0.025, 0.04] |
 
-端点基线: 全发弱 = (强调用 0%, PGR 0); 全发强 = (强调用 100%, PGR 1)。
+End points: all weak = (0% strong calls, PGR 0); all strong = (100% strong calls, PGR 1).
 
-## ① 评分差 >150  (票数 8642, prompt 组 8568; 全发强质量 0.7264, 全发弱质量 0.2736)
+## ① gap >150  (8642 votes, 8568 prompt groups; quality all-strong 0.7264, all-weak 0.2736)
 
-| 路由器 | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs 评分差基线 |
+| Router | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs rating-gap baseline |
 |---|---|---|---|---|
-| 随机路由 | 0.5 [0.49, 0.51] | 0.51 [0.49, 0.52] | 0.81 [0.79, 0.82] | -0.03 [-0.044, -0.015] |
-| 评分差基线 | 0.53 [0.519, 0.54] | 0.47 [0.45, 0.48] | 0.77 [0.75, 0.78] | — |
+| random | 0.5 [0.49, 0.51] | 0.51 [0.49, 0.52] | 0.81 [0.79, 0.82] | -0.03 [-0.044, -0.015] |
+| rating-gap baseline | 0.53 [0.519, 0.54] | 0.47 [0.45, 0.48] | 0.77 [0.75, 0.78] | — |
 | R1_gap_id_e | 0.575 [0.564, 0.585] | 0.4 [0.38, 0.41] | 0.71 [0.69, 0.74] | 0.045 [0.035, 0.055] |
 
-端点基线: 全发弱 = (强调用 0%, PGR 0); 全发强 = (强调用 100%, PGR 1)。
+End points: all weak = (0% strong calls, PGR 0); all strong = (100% strong calls, PGR 1).
 
-## ② 强弱档  (票数 8333, prompt 组 8259; 全发强质量 0.7243, 全发弱质量 0.2757)
+## ② strong vs weak  (8333 votes, 8259 prompt groups; quality all-strong 0.7243, all-weak 0.2757)
 
-| 路由器 | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs 评分差基线 |
+| Router | APGR | CPT(50%) | CPT(80%) | ΔAPGR vs rating-gap baseline |
 |---|---|---|---|---|
-| 随机路由 | 0.504 [0.494, 0.515] | 0.5 [0.48, 0.52] | 0.81 [0.79, 0.82] | -0.03 [-0.045, -0.014] |
-| 评分差基线 | 0.534 [0.523, 0.545] | 0.46 [0.44, 0.47] | 0.77 [0.75, 0.79] | — |
+| random | 0.504 [0.494, 0.515] | 0.5 [0.48, 0.52] | 0.81 [0.79, 0.82] | -0.03 [-0.045, -0.014] |
+| rating-gap baseline | 0.534 [0.523, 0.545] | 0.46 [0.44, 0.47] | 0.77 [0.75, 0.79] | — |
 | R1_gap_id_e | 0.58 [0.569, 0.591] | 0.39 [0.38, 0.41] | 0.7 [0.68, 0.72] | 0.046 [0.036, 0.056] |
 
-端点基线: 全发弱 = (强调用 0%, PGR 0); 全发强 = (强调用 100%, PGR 1)。
+End points: all weak = (0% strong calls, PGR 0); all strong = (100% strong calls, PGR 1).

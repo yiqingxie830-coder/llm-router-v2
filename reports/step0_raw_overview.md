@@ -1,11 +1,11 @@
-# 140k 原始数据概况
+# Raw 140k data overview
 
-- 行数: 135634 (id 唯一: 135634); 会话数: 115372
-- evaluation_order=1: 108315 行
-- 模型数: 53
-- 时间: 2025-04-17 ~ 2025-07-24
+- Rows: 135634 (unique ids: 135634); sessions: 115372
+- evaluation_order=1: 108315 rows
+- Models: 53
+- Dates: 2025-04-17 ~ 2025-07-24
 
-## winner 分布 (全部 / order=1)
+## winner distribution (all / order=1)
 
 | winner   |   count |   share |
 |:---------|--------:|--------:|
@@ -21,7 +21,7 @@
 | tie      |   16589 |   0.153 |
 | both_bad |   12653 |   0.117 |
 
-## 语言 (自带 language 列) 前 12
+## Top 12 languages (dataset's own language column)
 
 | language   |   count |   share |
 |:-----------|--------:|--------:|
@@ -38,9 +38,9 @@
 | es         |    1672 |   0.012 |
 | fa         |    1599 |   0.012 |
 
-共 126 种语言标记
+126 language tags in total
 
-## 第一条用户消息字符长度
+## Length of the first user message (characters)
 
 |       |   chars |
 |:------|--------:|
@@ -58,9 +58,9 @@
 | 99%   |    5540 |
 | max   |  119164 |
 
-< 16 字符: 8923 行
+< 16 characters: 8923 rows
 
-## 每个模型出场次数
+## Appearances per model
 
 |                                              |   count |
 |:---------------------------------------------|--------:|

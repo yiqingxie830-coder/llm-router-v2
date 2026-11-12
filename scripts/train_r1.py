@@ -1,18 +1,19 @@
-"""train_r1.py — 阶段 2 路由器 R1: prompt 向量 + 评分差 + 模型身份 → 逻辑回归
+"""train_r1.py — Stage 2 router R1: prompt vector + rating gap + model identity -> logistic regression
 
-目标 y_hi_route (高分方明确胜出 = 1; 平局和低分方胜 = 0, 平局倾向小模型)。
-每个情境 (cv0..cv4, final) 只用该情境的 train 票训练, 预测该情境的 eval 票;
-评分差 rating_gap 和高分方/低分方都来自该情境自己的 BT 拟合 (fold_labels.parquet), 不泄漏。
+Target y_hi_route (higher-rated model wins outright = 1; ties and lower-rated wins = 0, so ties lean to the small model).
+Each context (cv0..cv4, final) trains only on its own train votes and predicts its own eval votes;
+rating_gap and the higher/lower-rated sides come from that context's own BT fit (fold_labels.parquet), so nothing leaks.
 
-特征 (三个嵌套版本, 用来拆分提升来源)
-  gap      : 评分差 / 100                                   ← 等价于评分差基线, 只是重新校准
-  gap+id   : + 模型身份 (高分方 +1, 低分方 -1, 共 53 维)       ← 不看 prompt 的上限之一
-  gap+id+e : + e5-large prompt 向量 (1024 维, L2 归一化)      ← R1
-样本权重 1 / n_votes (同一 prompt 被投多次时降权)。
-正则强度 C 用开发集 5 折的平均对数损失选 (测试集不参与); 用 --final 时用选定的 C 在全开发集训练、预测测试集。
+Features (three nested versions, to split where the gain comes from)
+  gap      : rating gap / 100                                       <- equivalent to the rating-gap baseline, just recalibrated
+  gap+id   : + model identity (higher-rated +1, lower-rated -1, 53 dims) <- one upper bound for not reading the prompt
+  gap+id+e : + e5-large prompt vector (1024 dims, L2-normalized)    <- R1
+Sample weight 1 / n_votes (down-weights prompts voted on many times).
+Regularization C is chosen by mean log loss over the dev set's 5 folds (the test set is not used); with --final,
+the chosen C is trained on the full dev set and predicts the test set.
 
-用法: python -I train_r1.py <v2 根目录> [--final]
-产出: reports/r1_cv_selection.md, preds/r1_<版本>.parquet (context, id, p), 可直接喂 evaluate*.py
+Usage: python -I train_r1.py <repo root> [--final]
+Writes: reports/r1_cv_selection.md, preds/r1_<version>.parquet (context, id, p), ready for evaluate*.py
 """
 import sys
 import time
@@ -62,8 +63,8 @@ def fit_predict(ctx, version, C):
 
 
 versions = ["gap", "gap+id", "gap+id+e"]
-lines = ["# R1 正则强度选择 (开发集 5 折, eval 票, 不加权的对数损失 / AUC)", "",
-         "| 版本 | C | 对数损失 | AUC |", "|---|---|---|---|"]
+lines = ["# R1 regularization choice (dev set 5-fold, eval votes, unweighted log loss / AUC)", "",
+         "| Version | C | Log loss | AUC |", "|---|---|---|---|"]
 best, cache = {}, {}
 for v in versions:
     scores = {}
@@ -82,7 +83,7 @@ for v in versions:
         lines.append(f"| {v} | {C} | {scores[C]:.4f} | {roc_auc_score(y, p):.4f} |")
         print(v, C, round(scores[C], 4), f"{time.time() - t:.0f}s", flush=True)
     best[v] = min(scores, key=scores.get)
-lines += ["", "选定: " + ", ".join(f"{v} → C={c}" for v, c in best.items()), ""]
+lines += ["", "Chosen: " + ", ".join(f"{v} → C={c}" for v, c in best.items()), ""]
 (root / "reports/r1_cv_selection.md").write_text("\n".join(lines))
 
 for v in versions:

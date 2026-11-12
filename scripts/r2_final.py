@@ -1,8 +1,8 @@
-"""r2_final.py — R2 (MF) 的 --final: 按预登记 (reports/final_prereg.md) 的设置, 在整个开发集上训练, 预测测试集一次
+"""r2_final.py — --final for R2 (MF): with the preregistered settings (reports/final_prereg.md), train on the full dev set and predict the test set once
 
-设置: d = 128, Adam 1e-3, λ = 1e-5 (开发集 5 折嵌套选择 4/5 折选中); 轮数 = 开发集 train 内部 80/20 (按 prompt 组哈希) 早停。
-用法: python -I r2_final.py <v2 根目录>
-产出: preds/r2_win_final.parquet (p = P(赢)), preds/r2_eff_final.parquet (p = (1 + P赢 − P输)/2), reports/r2_final_train.json
+Settings: d = 128, Adam 1e-3, λ = 1e-5 (chosen in 4 of 5 folds by nested selection on the dev set); epochs = early stopping on an 80/20 split (by prompt-group hash) inside the dev-set train votes.
+Usage: python -I r2_final.py <repo root>
+Writes: preds/r2_win_final.parquet (p = P(win)), preds/r2_eff_final.parquet (p = (1 + P(win) − P(loss))/2), reports/r2_final_train.json
 """
 import hashlib
 import json

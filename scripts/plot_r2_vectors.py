@@ -1,7 +1,7 @@
-"""plot_r2_vectors.py — R2 白化模型向量的 PCA 二维投影图 (标模型名, 按固定名单强/中/弱档上色)
+"""plot_r2_vectors.py — 2-D PCA projection of R2's whitened model vectors (labelled with model names, coloured by the fixed strong / middle / weak tier lists)
 
-用法: python -I plot_r2_vectors.py <v2 根目录>
-产出: reports/r2_model_vectors_pca.png, reports/r2_model_vectors_pca.csv (各模型 PC1/PC2 坐标)
+Usage: python -I plot_r2_vectors.py <repo root>
+Writes: reports/r2_model_vectors_pca.png, reports/r2_model_vectors_pca.csv (PC1/PC2 coordinates per model)
 """
 import sys
 from pathlib import Path
@@ -28,19 +28,19 @@ X = X - X.mean(0)
 U, S, Vt = np.linalg.svd(X, full_matrices=False)
 pc = X @ Vt[:2].T
 ratio = S ** 2 / (S ** 2).sum()
-d["tier"] = d.model.map(lambda m: "强档" if m in ns["STRONG_MODELS"] else "弱档" if m in ns["WEAK_MODELS"] else "中间带")
+d["tier"] = d.model.map(lambda m: "strong" if m in ns["STRONG_MODELS"] else "weak" if m in ns["WEAK_MODELS"] else "middle")
 d["PC1"], d["PC2"] = pc[:, 0], pc[:, 1]
 d[["model", "tier", "n_votes_dev", "PC1", "PC2", "bias_u"]].to_csv(root / "reports/r2_model_vectors_pca.csv", index=False)
 
 plt.rcParams["font.family"] = ["DejaVu Sans"]
-EN = {"强档": "Strong tier", "中间带": "Middle (unused)", "弱档": "Weak tier"}  # 图上用英文, CSV 里的 tier 值不变 (下游脚本在用)
+EN = {"strong": "Strong tier", "middle": "Middle (unused)", "weak": "Weak tier"}
 fig, ax = plt.subplots(figsize=(14, 9), dpi=150)
-style = {"强档": ("#2a78d6", "o"), "中间带": ("#9a9a94", "o"), "弱档": ("#eb6834", "s")}
+style = {"strong": ("#2a78d6", "o"), "middle": ("#9a9a94", "o"), "weak": ("#eb6834", "s")}
 for t, (c, mk) in style.items():
     s = d[d.tier == t]
     ax.scatter(s.PC1, s.PC2, s=55, c=c, marker=mk, edgecolors="white", linewidths=1.5, zorder=3,
                label=f"{EN[t]} ({len(s)})")
-texts = [ax.text(r.PC1, r.PC2, r.model, fontsize=7.5, color="#2b2b28" if r.tier != "中间带" else "#6b6b66")
+texts = [ax.text(r.PC1, r.PC2, r.model, fontsize=7.5, color="#2b2b28" if r.tier != "middle" else "#6b6b66")
          for r in d.itertuples()]
 adjust_text(texts, ax=ax, arrowprops=dict(arrowstyle="-", color="#b5b5ae", lw=0.6),
             expand=(1.35, 1.8), force_text=(0.8, 1.2), force_static=(0.4, 0.6), iter_lim=2000)

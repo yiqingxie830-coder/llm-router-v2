@@ -1,85 +1,85 @@
-# Step 2/3 标签与分组结果
+# Step 2/3 labels and grouping
 
-分档 (暂定方案 A): 强档 = tier_k5 层 [1, 2], 弱档 = 层 [5]; 出场 < 300 次不分档。
+Tiers (provisional option A): strong = tier_k5 tiers [1, 2], weak = tier [5]; models with < 300 games get no tier.
 
-|   tier |   模型数 |    最低分 |    最高分 |
-|-------:|------:|-------:|-------:|
-|      1 |     1 | 1136.8 | 1136.8 |
-|      2 |     9 | 1064.8 | 1103.8 |
-|      3 |    17 | 1002.1 | 1042.6 |
-|      4 |    13 |  960.3 |  997.8 |
-|      5 |    11 |  882.1 |  930.4 |
+|   tier |   n_models |   min_rating |   max_rating |
+|-------:|-----------:|-------------:|-------------:|
+|      1 |          1 |       1136.8 |       1136.8 |
+|      2 |          9 |       1064.8 |       1103.8 |
+|      3 |         17 |       1002.1 |       1042.6 |
+|      4 |         13 |        960.3 |        997.8 |
+|      5 |         11 |        882.1 |        930.4 |
 
-## 标签三类比例
+## Label shares
 
-|       |   全量表 (y_hi: 评分高的一方) |   评估视图 (y: 强档 vs 弱档) |
-|:------|---------------------:|---------------------:|
-| 票数    |           101058     |             9332     |
-| 高/强 胜 |                0.467 |                0.616 |
-| 低/弱 胜 |                0.261 |                0.174 |
-| 平局    |                0.272 |                0.211 |
+|                  |   full table (y_hi: higher-rated side) |   evaluation view (y: strong vs weak) |
+|:-----------------|---------------------------------------:|--------------------------------------:|
+| votes            |                             101058     |                              9332     |
+| high/strong wins |                                  0.467 |                                 0.616 |
+| low/weak wins    |                                  0.261 |                                 0.174 |
+| tie              |                                  0.272 |                                 0.211 |
 
-## 路由目标 y_route (平局归弱档, 成本优先)
+## Routing target y_route (ties go to the weak tier, cost first)
 
-|    |   全量表 y_hi_route |   评估视图 y_route |
-|---:|-----------------:|---------------:|
-|  0 |            0.533 |          0.384 |
-|  1 |            0.467 |          0.616 |
+|    |   full table y_hi_route |   evaluation view y_route |
+|---:|------------------------:|--------------------------:|
+|  0 |                   0.533 |                     0.384 |
+|  1 |                   0.467 |                     0.616 |
 
-## 重复 prompt (标签噪声的第一个证据)
+## Repeated prompts (first evidence of label noise)
 
-### 全量表 (按评分高一方)
+### Full table (by higher-rated side)
 
-- 不同 prompt 数: 95373; 出现 ≥2 次的: 3289 个, 覆盖 8974 票 (8.9%)
-- 重复次数分布: {2: 2137, 3: 596, 4: 263, 5: 131, 6: 77, 7: 46} (最多 19)
-- 重复 prompt 中, 至少 2 张非平局票且结果不一致的比例: 37.0%
-- 噪声上限: 重复 prompt 的非平局票上, 每个 prompt 都猜它的多数结果, 准确率最多 79.5%
+- Distinct prompts: 95373; seen ≥2 times: 3289, covering 8974 votes (8.9%)
+- Repeat counts: {2: 2137, 3: 596, 4: 263, 5: 131, 6: 77, 7: 46} (max 19)
+- Share of repeated prompts with ≥2 non-tie votes that disagree: 37.0%
+- Noise ceiling: on non-tie votes of repeated prompts, predicting each prompt's majority gives at most 79.5% accuracy
 
-重复 prompt 的胜率 (soft label) 分布:
+Distribution of win rate (soft label) on repeated prompts:
 
-| mean       |   prompt 数 |
-|:-----------|-----------:|
-| 0 (弱全胜)    |        181 |
-| (0,0.25]   |        348 |
-| (0.25,0.5) |        182 |
-| 0.5        |       1116 |
-| (0.5,0.75] |        835 |
-| (0.75,1)   |        140 |
-| 1 (强全胜)    |        487 |
+| mean                   |   prompts |
+|:-----------------------|----------:|
+| 0 (weak always wins)   |       181 |
+| (0,0.25]               |       348 |
+| (0.25,0.5)             |       182 |
+| 0.5                    |      1116 |
+| (0.5,0.75]             |       835 |
+| (0.75,1)               |       140 |
+| 1 (strong always wins) |       487 |
 
-### 评估视图 (强档 vs 弱档)
+### Evaluation view (strong vs weak)
 
-- 不同 prompt 数: 9247; 出现 ≥2 次的: 82 个, 覆盖 167 票 (1.8%)
-- 重复次数分布: {2: 79, 3: 3} (最多 3)
-- 重复 prompt 中, 至少 2 张非平局票且结果不一致的比例: 14.7%
-- 噪声上限: 重复 prompt 的非平局票上, 每个 prompt 都猜它的多数结果, 准确率最多 91.5%
+- Distinct prompts: 9247; seen ≥2 times: 82, covering 167 votes (1.8%)
+- Repeat counts: {2: 79, 3: 3} (max 3)
+- Share of repeated prompts with ≥2 non-tie votes that disagree: 14.7%
+- Noise ceiling: on non-tie votes of repeated prompts, predicting each prompt's majority gives at most 91.5% accuracy
 
-重复 prompt 的胜率 (soft label) 分布:
+Distribution of win rate (soft label) on repeated prompts:
 
-| mean       |   prompt 数 |
-|:-----------|-----------:|
-| 0 (弱全胜)    |          5 |
-| (0,0.25]   |          5 |
-| (0.25,0.5) |          0 |
-| 0.5        |         24 |
-| (0.5,0.75] |         17 |
-| (0.75,1)   |          0 |
-| 1 (强全胜)    |         31 |
+| mean                   |   prompts |
+|:-----------------------|----------:|
+| 0 (weak always wins)   |         5 |
+| (0,0.25]               |         5 |
+| (0.25,0.5)             |         0 |
+| 0.5                    |        24 |
+| (0.5,0.75]             |        17 |
+| (0.75,1)               |         0 |
+| 1 (strong always wins) |        31 |
 
-## 首轮 vs 追问轮: 弱档是不是在追问时赢得更多?
+## First turn vs follow-ups: does the weak tier win more on follow-ups?
 
-|       |   首轮 order=1 |   追问 order>1 |
-|:------|-------------:|-------------:|
-| 票数    |     9332     |     2269     |
-| 高/强 胜 |        0.616 |        0.533 |
-| 低/弱 胜 |        0.174 |        0.221 |
-| 平局    |        0.211 |        0.245 |
+|                  |   first turn order=1 |   follow-up order>1 |
+|:-----------------|---------------------:|--------------------:|
+| votes            |             9332     |            2269     |
+| high/strong wins |                0.616 |               0.533 |
+| low/weak wins    |                0.174 |               0.221 |
+| tie              |                0.211 |               0.245 |
 
-全量表口径 (评分低一方的胜率; 两组平均评分差接近才可比):
+Full-table view (win rate of the lower-rated side; comparable only when the mean rating gaps are close):
 
-|       |         首轮 |        追问 |
-|:------|-----------:|----------:|
-| 票数    | 101058     | 25222     |
-| 低分方胜  |      0.261 |     0.285 |
-| 平局    |      0.272 |     0.296 |
-| 平均评分差 |     71.927 |    71.642 |
+|                  |   first turn |   follow-up |
+|:-----------------|-------------:|------------:|
+| votes            |   101058     |   25222     |
+| lower-rated wins |        0.261 |       0.285 |
+| tie              |        0.272 |       0.296 |
+| mean rating gap  |       71.927 |      71.642 |

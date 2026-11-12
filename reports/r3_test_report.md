@@ -1,70 +1,70 @@
-# 方案二（语义标签）测试集结果：唯一一次运行
+# Approach 2 (semantic labels) test-set results: the only run
 
-运行日期 2026-11-11。Yiqing 当天确认后运行，测试集只用这一次，跑完封存。
-完整表格见 r3_compare_final.md（预登记设置）和 r3_compare_final_ep100.md（敏感性，早停上限 100 轮）。开发集结果见 r3_dev_report.md。
+Run on 2026-11-11, after the author's confirmation that day. The test set was used this once and sealed afterwards.
+Full tables are in r3_compare_final.md (pre-registered settings) and r3_compare_final_ep100.md (sensitivity, early-stopping cap 100 epochs). Dev-set results are in r3_dev_report.md.
 
-## 测试集是怎么用的（如实记录）
+## How the test set was used (recorded as it happened)
 
-- **这是测试集的第二次使用。** 第一次是 2026-11-10 方案一（R1、R2）的 --final，见 final_test_report.md。那次的结果不重跑、不修改。
-- **事先已经定下的部分：** 第一次 --final 结果出来之前，Yiqing 在 2026-11-10 已经确定了方案二的打标方案：
-  - 范围：口径 ② 的 9,247 条 prompt；
-  - 7 个字段和打标 prompt 原文；
-  - 打标模型 Haiku。
-- **事后才写的部分：** 训练细节写在 r3_prereg.md 里，包括路由器结构、超参网格、R2-② 对照和判定标准。这份文件是在第一次 --final 结果出来之后写的，但写在拿到全量标签之前，也写在看任何开发集或测试集上的 R3 结果之前。所以 R3 的训练设计不可能针对测试集调整，但写的人当时已经知道方案一在测试集上的数字。
-- **这次运行的约束：**
-  - 设置完全按 r3_prereg.md，没有再调参；
-  - 选参只用全开发集 ② 票的 80/20 内层划分；
-  - R2-②、R3、R2+R3 三个路由器同时跑。
-  - 早停上限放宽到 100 轮的版本，是开发集上已经报告过的敏感性检查，这里一并报告，但不作为主结果。
-- **入选设置：** R3 选了逻辑回归（C = 0.01），和开发集 5 折一致。
+- **This is the second use of the test set.** The first was approach 1's (R1, R2) --final on 2026-11-10, see final_test_report.md. Those results are not rerun or changed.
+- **What was fixed in advance:** before the first --final results came out, approach 2's labeling plan was settled on 2026-11-10:
+  - scope: the 9,247 prompts in view ②;
+  - the 7 fields and the exact labeling prompt;
+  - Haiku as the labeling model.
+- **What was written afterwards:** the training details are in r3_prereg.md, including router structure, hyperparameter grids, the R2-② control and the decision rules. That file was written after the first --final results came out, but before the full labels were available, and before seeing any R3 result on the dev or test set. So R3's training design could not have been tuned to the test set, but its author already knew approach 1's test-set numbers.
+- **Constraints on this run:**
+  - settings exactly as in r3_prereg.md, no further tuning;
+  - selection used only an 80/20 inner split of the full dev set's ② votes;
+  - R2-②, R3 and R2+R3 were run together.
+  - The version with the early-stopping cap raised to 100 epochs is the sensitivity check already reported on the dev set; it is reported here too, but not as the main result.
+- **Chosen setting:** R3 chose logistic regression (C = 0.01), as in all 5 dev folds.
 
-## 主指标：口径 ② 按调用比例的 APGR（测试集 999 票，988 个 prompt）
+## Main metric: view ② APGR on the call-share axis (999 test votes, 988 prompts)
 
-| 路由器 | APGR | Δ vs 评分差基线 |
+| Router | APGR | Δ vs rating-gap baseline |
 |---|---|---|
-| 评分差基线 | 0.529 | — |
-| R1（方案一，全量票，第一次 --final） | 0.575 | +0.046 [0.008, 0.088] |
-| R2（方案一，全量票，第一次 --final） | 0.612 | +0.083 [0.038, 0.127] |
-| R2-②（方案一，只用 ② 票） | 0.562 | +0.033 [0.004, 0.060] |
-| R2-②，上限 100 轮（敏感性） | 0.577 | +0.048 [0.008, 0.092] |
-| **R3（方案二）** | **0.592** | **+0.063 [0.017, 0.108]** |
-| R2 + R3（组合） | 0.597 | +0.068 [0.025, 0.115] |
+| Rating-gap baseline | 0.529 | — |
+| R1 (approach 1, all votes, first --final) | 0.575 | +0.046 [0.008, 0.088] |
+| R2 (approach 1, all votes, first --final) | 0.612 | +0.083 [0.038, 0.127] |
+| R2-② (approach 1, ② votes only) | 0.562 | +0.033 [0.004, 0.060] |
+| R2-②, cap 100 epochs (sensitivity) | 0.577 | +0.048 [0.008, 0.092] |
+| **R3 (approach 2)** | **0.592** | **+0.063 [0.017, 0.108]** |
+| R2 + R3 (combined) | 0.597 | +0.068 [0.025, 0.115] |
 
-## 预登记判定在测试集上的结果
+## Pre-registered decisions on the test set
 
-| 判定 | 开发集 | 测试集 | 测试集上是否成立 |
+| Decision | Dev set | Test set | Holds on the test set? |
 |---|---|---|---|
-| 方案二有用：R3 的 Δ 区间不含 0 | +0.051 [0.039, 0.066] | +0.063 [0.017, 0.108] | **成立** |
-| 方案二比方案一好：R3 − R2-② 区间为正 | +0.046 [0.034, 0.057] | +0.030 [−0.010, 0.065] | **未成立**（点估计为正，区间含 0） |
-| 同上，敏感性版 | +0.026 [0.016, 0.036] | +0.015 [−0.020, 0.042] | 未成立 |
-| 组合有增益：R2+R3 − R2-② 区间为正 | +0.049 [0.038, 0.059] | +0.035 [0.003, 0.071] | **成立**（下沿贴近 0） |
-| 同上，敏感性版 | +0.029 [0.020, 0.039] | +0.020 [−0.008, 0.047] | 未成立 |
-| 参考：R3 − 全量 R2 | −0.005 [−0.014, 0.005] | −0.020 [−0.053, 0.011] | 打平（区间含 0） |
+| Approach 2 is useful: R3's Δ interval excludes 0 | +0.051 [0.039, 0.066] | +0.063 [0.017, 0.108] | **Yes** |
+| Approach 2 beats approach 1: R3 − R2-② interval is positive | +0.046 [0.034, 0.057] | +0.030 [−0.010, 0.065] | **No** (positive point estimate, interval contains 0) |
+| Same, sensitivity version | +0.026 [0.016, 0.036] | +0.015 [−0.020, 0.042] | No |
+| The combination adds value: R2+R3 − R2-② interval is positive | +0.049 [0.038, 0.059] | +0.035 [0.003, 0.071] | **Yes** (lower end close to 0) |
+| Same, sensitivity version | +0.029 [0.020, 0.039] | +0.020 [−0.008, 0.047] | No |
+| Reference: R3 − full R2 | −0.005 [−0.014, 0.005] | −0.020 [−0.053, 0.011] | Tie (interval contains 0) |
 
-**怎么解读：**
-- 开发集有 8,333 张 ② 票，测试集只有 999 张，区间宽了 3 到 4 倍。
-- 测试集确认了「标签有用」，也确认了「只用少量票训练时，R3 不比全量 R2 差多少」。
-- 但「同样数据量下，标签比 embedding 好」这一条在测试集上没有被确认。它只能说没被推翻，主要证据来自开发集。
-- 写报告时应该写成：开发集显著，测试集方向一致但不显著。
+**How to read this:**
+- The dev set has 8,333 ② votes and the test set only 999, so intervals are 3 to 4 times wider.
+- The test set confirms "labels are useful", and that "trained on few votes, R3 is not far behind full R2".
+- But "at equal data, labels beat embeddings" is not confirmed on the test set. It can only be said not to be overturned; the main evidence is from the dev set.
+- The report should say: significant on the dev set, same direction but not significant on the test set.
 
-## 美元口径（次要）
+## Dollar axis (secondary)
 
-| 路由器 | 美元主案例 ΔAPGR$ vs 正式基线（840 票） |
+| Router | Main dollar case ΔAPGR$ vs formal baseline (840 votes) |
 |---|---|
-| R1（全量） | +0.023 [−0.009, 0.054] |
-| R2（全量） | +0.016 [−0.024, 0.070] |
+| R1 (all votes) | +0.023 [−0.009, 0.054] |
+| R2 (all votes) | +0.016 [−0.024, 0.070] |
 | R2-② | +0.019 [−0.007, 0.045] |
 | R3 | 0.000 [−0.040, 0.043] |
 | R2 + R3 | +0.003 [−0.042, 0.051] |
 
-注：R1、R2 这两行是本次和 R3 一起重新做 bootstrap 得到的，和第一次 --final（final_test_report.md）的 R1 +0.021 [−0.007, 0.051]、R2 +0.014 [−0.021, 0.068] 差 0.002（点估计和区间都有出入）。两次用的是不同的评估脚本（这次 r3_eval.py，第一次 evaluate_cost.py），具体差在哪一步没有追查，结论不受影响。对外报告一律沿用第一次的数字。
+Note: the R1 and R2 rows come from a fresh bootstrap run together with R3 here, and differ by 0.002 from the first --final (final_test_report.md), R1 +0.021 [−0.007, 0.051] and R2 +0.014 [−0.021, 0.068] (both the point estimates and the intervals differ). The two runs used different evaluation scripts (this one r3_eval.py, the first evaluate_cost.py); exactly which step differs was not traced, and the conclusion is unaffected. External reporting always uses the first run's numbers.
 
-所有路由器的区间都含 0，和开发集「美元口径下只用 ② 票训练的路由器没有优势」的结论一致。配对内指标在测试集上只有 3 个模型对、98 票，区间太宽，不解读。
+Every router's interval contains 0, consistent with the dev-set finding that "routers trained only on ② votes have no edge on the dollar axis". The within-pair metric has only 3 model pairs and 98 votes on the test set; the intervals are too wide to interpret.
 
-## 按 has_single_answer 分组
+## By has_single_answer
 
-测试集各组分别有 421 / 382 / 133 / 61 票，3 分组只有 61 票，区间跨度超过 0.6，不解读。0 分组里，R3 相对评分差基线 +0.106 [0.041, 0.180]，R2 全量 +0.098。方向和开发集一致：开放、无唯一答案的题，看 prompt 收益最大。
+The test-set groups have 421 / 382 / 133 / 61 votes; the score-3 group has only 61 votes and an interval wider than 0.6, so it is not interpreted. In the score-0 group, R3 gains +0.106 [0.041, 0.180] over the rating-gap baseline and full R2 +0.098. The direction matches the dev set: open-ended prompts with no single answer gain the most from reading the prompt.
 
-## 封存
+## Sealed
 
-测试集到此封存。之后报告里的所有数字，要么来自开发集，要么照抄这两次运行的结果，不再在测试集上运行任何新模型或新设置。
+The test set is sealed here. Every number in later reports either comes from the dev set or is copied from these two runs; no new model or setting is run on the test set.

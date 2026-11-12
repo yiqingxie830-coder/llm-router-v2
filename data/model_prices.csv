@@ -1,54 +1,54 @@
 model,input_usd_mtok,output_usd_mtok,provider_basis,source,check,note
-gemini-2.5-pro,1.25,10,Google 官方,LiteLLM gemini-2.5-pro,已核(LiteLLM 价格库),≤200k token 档
-gemini-2.5-pro-preview-03-25,1.25,10,Google 官方,LiteLLM gemini-2.5-pro (同代预览版按正式版价),已核(LiteLLM 价格库),
-gemini-2.5-pro-preview-05-06,1.25,10,Google 官方,LiteLLM gemini-2.5-pro (同代预览版按正式版价),已核(LiteLLM 价格库),
-grok-4-0709,3,15,xAI 官方, 2025-07 官方价,已核(二手来源),LiteLLM 已不收录
-o3-2025-04-16,2,8,OpenAI 官方,LiteLLM o3-2025-04-16,已核(LiteLLM 价格库),"按投票日期计价: 2025-06-10 前 10/40, 之后 2/8"
-deepseek-r1-0528,0.55,2.19,DeepSeek 官方, 2025 年标准时段价,已核(二手来源),第三方托管价 0.2–0.7/0.6–2.5
-chatgpt-4o-latest-20250326,5,15,OpenAI 官方,官方价,已核(二手来源),
-grok-3-preview-02-24,3,15,xAI 官方, grok-3 官方价,已核(二手来源),
-gemini-2.5-flash,0.3,2.5,Google 官方,LiteLLM gemini-2.5-flash,已核(LiteLLM 价格库),
-gemini-2.5-flash-preview-04-17,0.15,3.5,Google 官方,预览价 (思考模式输出 3.5),已核(二手来源),非思考输出 0.6
-llama-4-maverick-03-26-experimental,,,无,实验版未公开售卖,无价,不进美元口径
-qwen3-235b-a22b-no-thinking,0.7,2.8,阿里云国际站,官方价 (非思考),已核(二手来源),第三方托管 0.2/0.6
-gpt-4.1-2025-04-14,2,8,OpenAI 官方,LiteLLM gpt-4.1-2025-04-14,已核(LiteLLM 价格库),
-kimi-k2-0711-preview,0.6,2.5,Moonshot 官方,官方价,已核(二手来源),
-hunyuan-turbos-20250416,,,腾讯云,仅有人民币价且 Arena 版本对不上,无价,不进美元口径
-o4-mini-2025-04-16,1.1,4.4,OpenAI 官方,LiteLLM o4-mini-2025-04-16,已核(LiteLLM 价格库),
-gemini-2.5-flash-lite-preview-06-17-thinking,0.1,0.4,Google 官方,LiteLLM gemini-2.5-flash-lite,已核(LiteLLM 价格库),
-deepseek-v3-0324,0.27,1.1,DeepSeek 官方, 2025 年标准时段价,已核(二手来源),
-qwen-max-2025-01-25,1.6,6.4,阿里云国际站,官方价,已核(二手来源),
-qwen3-235b-a22b,0.7,8.4,阿里云国际站,官方价 (思考模式输出),已核(二手来源),
-mistral-medium-2505,0.4,2,Mistral 官方,LiteLLM azure_ai/mistral-medium-2505,已核(LiteLLM 价格库),
-gemma-3-27b-it,0.1,0.3,第三方托管 (开源),LiteLLM nebius/google/gemma-3-27b-it,已核(LiteLLM 价格库),开源模型无第一方价
-qwen3-235b-a22b-instruct-2507,0.7,2.8,阿里云国际站,官方价,未能核实,第三方托管约 0.13/0.6
-minimax-m1,0.4,2.2,MiniMax 官方,官方价 (≤200k),已核(二手来源),
-grok-3-mini-beta,0.3,0.5,xAI 官方,官方价,已核(二手来源),
-grok-3-mini-high,0.3,0.5,xAI 官方,官方价,已核(二手来源),
-claude-opus-4-20250514,15,75,Anthropic 官方,LiteLLM claude-opus-4-20250514,已核(LiteLLM 价格库),
-claude-opus-4-20250514-thinking-16k,15,75,Anthropic 官方,LiteLLM claude-opus-4-20250514,已核(LiteLLM 价格库),思考 token 按输出计费
-gemini-2.0-flash-001,0.1,0.4,Google 官方,官方价 (Vertex 0.15/0.6),已核(二手来源),
-qwq-32b,0.15,0.45,第三方托管 (开源),LiteLLM nebius/Qwen/QwQ-32B,已核(LiteLLM 价格库),
-gpt-4o-2024-11-20,2.5,10,OpenAI 官方,LiteLLM gpt-4o-2024-11-20,已核(LiteLLM 价格库),
-gpt-4.1-mini-2025-04-14,0.4,1.6,OpenAI 官方,LiteLLM gpt-4.1-mini,已核(LiteLLM 价格库),
-claude-sonnet-4-20250514,3,15,Anthropic 官方,LiteLLM claude-sonnet-4-20250514,已核(LiteLLM 价格库),
-claude-sonnet-4-20250514-thinking-32k,3,15,Anthropic 官方,LiteLLM claude-sonnet-4-20250514,已核(LiteLLM 价格库),思考 token 按输出计费
-qwen3-30b-a3b,0.1,0.3,第三方托管 (开源),LiteLLM nebius/Qwen/Qwen3-30B-A3B,已核(LiteLLM 价格库),
-mistral-small-2506,0.1,0.3,Mistral 官方,官方价,已核(二手来源),
-command-a-03-2025,2.5,10,Cohere 官方,LiteLLM command-a-03-2025,已核(LiteLLM 价格库),
-o3-mini,1.1,4.4,OpenAI 官方,LiteLLM o3-mini,已核(LiteLLM 价格库),
-gemma-3n-e4b-it,,,无,开源小模型无稳定托管价,无价,不进美元口径
-amazon-nova-experimental-chat-05-14,,,无,实验版未公开售卖,无价,不进美元口径
-llama-4-scout-17b-16e-instruct,0.17,0.66,AWS Bedrock,LiteLLM meta.llama4-scout-17b-instruct-v1:0,已核(LiteLLM 价格库),开源模型统一用 Bedrock
-llama-4-maverick-17b-128e-instruct,0.24,0.97,AWS Bedrock,LiteLLM meta.llama4-maverick-17b-instruct-v1:0,已核(LiteLLM 价格库),
-claude-3-7-sonnet-20250219,3,15,Anthropic 官方,LiteLLM claude-3-7-sonnet,已核(LiteLLM 价格库),
-claude-3-7-sonnet-20250219-thinking-32k,3,15,Anthropic 官方,LiteLLM claude-3-7-sonnet,已核(LiteLLM 价格库),思考 token 按输出计费
-claude-3-5-sonnet-20241022,3,15,Anthropic 官方,LiteLLM claude-3-5-sonnet,已核(LiteLLM 价格库),
-amazon.nova-pro-v1:0,0.8,3.2,AWS Bedrock,LiteLLM amazon.nova-pro-v1:0,已核(LiteLLM 价格库),
-llama-3.3-70b-instruct,0.72,0.72,AWS Bedrock, Bedrock 价,已核(二手来源),开源模型统一用 Bedrock
-mistral-small-3.1-24b-instruct-2503,0.1,0.3,Mistral 官方,LiteLLM vertex_ai/mistral-small-2503,已核(LiteLLM 价格库),
-gpt-4o-mini-2024-07-18,0.15,0.6,OpenAI 官方,LiteLLM gpt-4o-mini-2024-07-18,已核(LiteLLM 价格库),
-magistral-medium-2506,2,5,Mistral 官方,官方价,已核(二手来源),
-claude-3-5-haiku-20241022,0.8,4,Anthropic 官方,官方价 (2024-12 降价后),已核(二手来源),LiteLLM Vertex 价 1/5
-gemini-2.0-flash-thinking-exp-01-21,,,无,实验版免费预览,无价,票数少; 不在 BT 排名里
-qwen3-coder-480b-a35b-instruct,,,无,上线于数据末期且未核实价格,无价,票数少; 不在 BT 排名里
+gemini-2.5-pro,1.25,10,Google official,LiteLLM gemini-2.5-pro,checked (LiteLLM price list),≤200k-token tier
+gemini-2.5-pro-preview-03-25,1.25,10,Google official,LiteLLM gemini-2.5-pro (preview priced as the GA model of the same generation),checked (LiteLLM price list),
+gemini-2.5-pro-preview-05-06,1.25,10,Google official,LiteLLM gemini-2.5-pro (preview priced as the GA model of the same generation),checked (LiteLLM price list),
+grok-4-0709,3,15,xAI official,official price as of 2025-07,checked (secondary source),no longer listed by LiteLLM
+o3-2025-04-16,2,8,OpenAI official,LiteLLM o3-2025-04-16,checked (LiteLLM price list),"priced by vote date: 10/40 before 2025-06-10, 2/8 after"
+deepseek-r1-0528,0.55,2.19,DeepSeek official,2025 standard-hours price,checked (secondary source),third-party hosts 0.2–0.7/0.6–2.5
+chatgpt-4o-latest-20250326,5,15,OpenAI official,official price,checked (secondary source),
+grok-3-preview-02-24,3,15,xAI official,grok-3 official price,checked (secondary source),
+gemini-2.5-flash,0.3,2.5,Google official,LiteLLM gemini-2.5-flash,checked (LiteLLM price list),
+gemini-2.5-flash-preview-04-17,0.15,3.5,Google official,preview price (thinking-mode output 3.5),checked (secondary source),non-thinking output 0.6
+llama-4-maverick-03-26-experimental,,,none,experimental version; not sold publicly,no price,excluded from the dollar view
+qwen3-235b-a22b-no-thinking,0.7,2.8,Alibaba Cloud international,official price (non-thinking),checked (secondary source),third-party hosts 0.2/0.6
+gpt-4.1-2025-04-14,2,8,OpenAI official,LiteLLM gpt-4.1-2025-04-14,checked (LiteLLM price list),
+kimi-k2-0711-preview,0.6,2.5,Moonshot official,official price,checked (secondary source),
+hunyuan-turbos-20250416,,,Tencent Cloud,only a CNY price; the version does not match Arena's,no price,excluded from the dollar view
+o4-mini-2025-04-16,1.1,4.4,OpenAI official,LiteLLM o4-mini-2025-04-16,checked (LiteLLM price list),
+gemini-2.5-flash-lite-preview-06-17-thinking,0.1,0.4,Google official,LiteLLM gemini-2.5-flash-lite,checked (LiteLLM price list),
+deepseek-v3-0324,0.27,1.1,DeepSeek official,2025 standard-hours price,checked (secondary source),
+qwen-max-2025-01-25,1.6,6.4,Alibaba Cloud international,official price,checked (secondary source),
+qwen3-235b-a22b,0.7,8.4,Alibaba Cloud international,official price (thinking-mode output),checked (secondary source),
+mistral-medium-2505,0.4,2,Mistral official,LiteLLM azure_ai/mistral-medium-2505,checked (LiteLLM price list),
+gemma-3-27b-it,0.1,0.3,third-party host (open model),LiteLLM nebius/google/gemma-3-27b-it,checked (LiteLLM price list),open model; no first-party price
+qwen3-235b-a22b-instruct-2507,0.7,2.8,Alibaba Cloud international,official price,could not verify,third-party hosts about 0.13/0.6
+minimax-m1,0.4,2.2,MiniMax official,official price (≤200k),checked (secondary source),
+grok-3-mini-beta,0.3,0.5,xAI official,official price,checked (secondary source),
+grok-3-mini-high,0.3,0.5,xAI official,official price,checked (secondary source),
+claude-opus-4-20250514,15,75,Anthropic official,LiteLLM claude-opus-4-20250514,checked (LiteLLM price list),
+claude-opus-4-20250514-thinking-16k,15,75,Anthropic official,LiteLLM claude-opus-4-20250514,checked (LiteLLM price list),thinking tokens billed as output
+gemini-2.0-flash-001,0.1,0.4,Google official,official price (Vertex 0.15/0.6),checked (secondary source),
+qwq-32b,0.15,0.45,third-party host (open model),LiteLLM nebius/Qwen/QwQ-32B,checked (LiteLLM price list),
+gpt-4o-2024-11-20,2.5,10,OpenAI official,LiteLLM gpt-4o-2024-11-20,checked (LiteLLM price list),
+gpt-4.1-mini-2025-04-14,0.4,1.6,OpenAI official,LiteLLM gpt-4.1-mini,checked (LiteLLM price list),
+claude-sonnet-4-20250514,3,15,Anthropic official,LiteLLM claude-sonnet-4-20250514,checked (LiteLLM price list),
+claude-sonnet-4-20250514-thinking-32k,3,15,Anthropic official,LiteLLM claude-sonnet-4-20250514,checked (LiteLLM price list),thinking tokens billed as output
+qwen3-30b-a3b,0.1,0.3,third-party host (open model),LiteLLM nebius/Qwen/Qwen3-30B-A3B,checked (LiteLLM price list),
+mistral-small-2506,0.1,0.3,Mistral official,official price,checked (secondary source),
+command-a-03-2025,2.5,10,Cohere official,LiteLLM command-a-03-2025,checked (LiteLLM price list),
+o3-mini,1.1,4.4,OpenAI official,LiteLLM o3-mini,checked (LiteLLM price list),
+gemma-3n-e4b-it,,,none,small open model; no stable hosted price,no price,excluded from the dollar view
+amazon-nova-experimental-chat-05-14,,,none,experimental version; not sold publicly,no price,excluded from the dollar view
+llama-4-scout-17b-16e-instruct,0.17,0.66,AWS Bedrock,LiteLLM meta.llama4-scout-17b-instruct-v1:0,checked (LiteLLM price list),open models use Bedrock throughout
+llama-4-maverick-17b-128e-instruct,0.24,0.97,AWS Bedrock,LiteLLM meta.llama4-maverick-17b-instruct-v1:0,checked (LiteLLM price list),
+claude-3-7-sonnet-20250219,3,15,Anthropic official,LiteLLM claude-3-7-sonnet,checked (LiteLLM price list),
+claude-3-7-sonnet-20250219-thinking-32k,3,15,Anthropic official,LiteLLM claude-3-7-sonnet,checked (LiteLLM price list),thinking tokens billed as output
+claude-3-5-sonnet-20241022,3,15,Anthropic official,LiteLLM claude-3-5-sonnet,checked (LiteLLM price list),
+amazon.nova-pro-v1:0,0.8,3.2,AWS Bedrock,LiteLLM amazon.nova-pro-v1:0,checked (LiteLLM price list),
+llama-3.3-70b-instruct,0.72,0.72,AWS Bedrock,Bedrock price,checked (secondary source),open models use Bedrock throughout
+mistral-small-3.1-24b-instruct-2503,0.1,0.3,Mistral official,LiteLLM vertex_ai/mistral-small-2503,checked (LiteLLM price list),
+gpt-4o-mini-2024-07-18,0.15,0.6,OpenAI official,LiteLLM gpt-4o-mini-2024-07-18,checked (LiteLLM price list),
+magistral-medium-2506,2,5,Mistral official,official price,checked (secondary source),
+claude-3-5-haiku-20241022,0.8,4,Anthropic official,official price (after the 2024-12 cut),checked (secondary source),LiteLLM Vertex price 1/5
+gemini-2.0-flash-thinking-exp-01-21,,,none,experimental free preview,no price,few votes; not in the BT ranking
+qwen3-coder-480b-a35b-instruct,,,none,released at the end of the data window; price not verified,no price,few votes; not in the BT ranking

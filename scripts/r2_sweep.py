@@ -1,14 +1,15 @@
-"""r2_sweep.py — R2 (MF) 的超参扫描、嵌套选择、敏感性表, 以及模型向量表导出
+"""r2_sweep.py — R2 (MF) hyperparameter sweep, nested selection, sensitivity table, and export of the model-vector table
 
-扫描: d (prompt 投影维数) × 学习率 × λ (显式 L2), 每个组合在 5 个外层折上各做:
-  内层: 外层 train 票按 prompt 组切 80/20 (和 train_r2_mf.py 同一个哈希), 80% 训练, 20% 早停 (耐心 3 轮, 最多 30 轮),
-        记下最佳轮数和该轮的验证对数损失;
-  外层: 用该组合 + 最佳轮数在整份 train 上重训, 预测该折 eval 票 (只用来画敏感性表, 不参与选择)。
-嵌套选择: 每折取内层验证损失最小的组合。eval 票和测试集都不参与选择。
+Sweep: d (prompt projection size) × learning rate × λ (explicit L2); each combination, on each of the 5 outer folds:
+  inner: split the outer train votes 80/20 by prompt group (same hash as train_r2_mf.py), train on 80%, early-stop
+         on 20% (patience 3 epochs, at most 30), record the best epoch and its validation log loss;
+  outer: retrain on the whole train part with that combination and epoch count, predict that fold's eval votes
+         (used only for the sensitivity table, never for selection).
+Nested selection: each fold takes the combination with the lowest inner validation loss. Neither eval votes nor the test set take part.
 
-用法: python -I r2_sweep.py <v2 根目录> run <d> [<lr> <λ>]   (可只跑一组; 内存紧时每组一个进程顺序跑)
-      python -I r2_sweep.py <v2 根目录> summarize
-      python -I r2_sweep.py <v2 根目录> export <d> <lr> <λ> <轮数>   (在整个开发集 90% 上训练一次, 导出模型向量表; 不预测测试集)
+Usage: python -I r2_sweep.py <repo root> run <d> [<lr> <λ>]   (can run a single combination; with tight memory run one process per combination)
+       python -I r2_sweep.py <repo root> summarize
+       python -I r2_sweep.py <repo root> export <d> <lr> <λ> <epochs>   (train once on the full 90% dev set and export the model-vector table; does not predict the test set)
 """
 import json
 import sys
@@ -48,7 +49,7 @@ def run(d, only=None):
     for lr in LRS:
         for lam in LAMS:
             ns["LR"] = lr
-            if (out_dir / f"{tag(d, lr, lam)}.json").exists() or (only and only != (lr, lam)):   # 断点续跑 / 只跑一组
+            if (out_dir / f"{tag(d, lr, lam)}.json").exists() or (only and only != (lr, lam)):   # resume / run a single combination
                 continue
             rows, info = [], {}
             for k in range(5):
@@ -89,7 +90,7 @@ def summarize():
     sw = ev[ev.is_strong_vs_weak.values]
     main = ev[ev.is_strong_vs_weak.values & (ev.typ_hi > ev.typ_lo).values]
     combos = [(d, lr, lam) for d in DS + [256] for lr in LRS for lam in LAMS
-              if (out_dir / f"{tag(d, lr, lam)}.json").exists()]   # d=256 只补跑了 lr=1e-3 (d=128 落在网格边缘后加的)
+              if (out_dir / f"{tag(d, lr, lam)}.json").exists()]   # d=256 was only added for lr=1e-3 (after d=128 landed on the grid edge)
     info = {c: json.loads((out_dir / f"{tag(*c)}.json").read_text()) for c in combos}
     preds = {c: pd.read_parquet(out_dir / f"{tag(*c)}.parquet") for c in combos}
     pick = {k: min(combos, key=lambda c: info[c][f"cv{k}"]["val_loss"]) for k in range(5)}
@@ -103,10 +104,10 @@ def summarize():
         ap, cpt = apgr_cost(m.q_hi.values, key, (m.cost_hi - m.cost_lo).values)
         return apgr_frac(s.q_hi.values, s.p_win.values), ap, cpt
 
-    L = ["# R2 (MF) 超参扫描与嵌套选择", "",
-         f"网格: d ∈ {DS} (另补 d = 256, 只跑学习率 1e-3), 学习率 ∈ {LRS}, λ ∈ {LAMS} (共 {len(combos)} 组); 批大小 1024, Adam, 早停耐心 3 轮, 最多 30 轮。",
-         "内层验证 = 每个外层折 train 票按 prompt 组哈希切出的 20%。APGR 列是外层 eval 票的点估计, 只用来看敏感性, 不参与选择。", "",
-         "| d | 学习率 | λ | 内层验证损失 (5 折平均) | 早停轮数 (5 折) | 每折耗时 (秒, 均值) | 强弱档 APGR | 主案例 APGR$ | 主案例 CPT$(50%) |",
+    L = ["# R2 (MF) hyperparameter sweep and nested selection", "",
+         f"Grid: d ∈ {DS} (plus d = 256, learning rate 1e-3 only), learning rate ∈ {LRS}, λ ∈ {LAMS} ({len(combos)} combinations); batch size 1024, Adam, early-stopping patience 3 epochs, at most 30.",
+         "Inner validation = the 20% of each outer fold's train votes split off by prompt-group hash. APGR columns are point estimates on the outer eval votes, for sensitivity only, not used in selection.", "",
+         "| d | Learning rate | λ | Inner validation loss (5-fold mean) | Early-stop epochs (5 folds) | Seconds per fold (mean) | Strong vs weak APGR | Main case APGR$ | Main case CPT$(50%) |",
          "|---|---|---|---|---|---|---|---|---|"]
     for c in combos:
         vl = np.mean([info[c][f"cv{k}"]["val_loss"] for k in range(5)])
@@ -115,9 +116,9 @@ def summarize():
         a1, a2, cpt = scores(preds[c])
         L.append(f"| {c[0]} | {c[1]:g} | {c[2]:g} | {vl:.4f} | {eps} | {sec:.0f} | {a1:.3f} | {a2:.3f} | {cpt:.2f} |")
     a1, a2, cpt = scores(nested)
-    L += [f"| **嵌套选择** | | | | | | **{a1:.3f}** | **{a2:.3f}** | **{cpt:.2f}** |", "",
-          "各折选中: " + "; ".join(f"cv{k} → d={pick[k][0]}, lr={pick[k][1]:g}, λ={pick[k][2]:g}, "
-                                 f"{info[pick[k]][f'cv{k}']['epochs']} 轮" for k in range(5))]
+    L += [f"| **nested selection** | | | | | | **{a1:.3f}** | **{a2:.3f}** | **{cpt:.2f}** |", "",
+          "Chosen per fold: " + "; ".join(f"cv{k} → d={pick[k][0]}, lr={pick[k][1]:g}, λ={pick[k][2]:g}, "
+                                 f"{info[pick[k]][f'cv{k}']['epochs']} epochs" for k in range(5))]
     (root / "reports/r2_sweep.md").write_text("\n".join(L))
     print("\n".join(L))
 
@@ -126,15 +127,15 @@ def export(d, lr, lam, epochs):
     ns = load_mf()
     ns["K"], ns["LR"] = d, lr
     fl, arrays, train = ns["fl"], ns["arrays"], ns["train"]
-    dd = fl[(fl.context == "final") & (fl.role == "train")]   # = 整个开发集 90%, 评分来自开发集 BT; 测试集票不参与
+    dd = fl[(fl.context == "final") & (fl.role == "train")]   # = the full 90% dev set, ratings from the dev-set BT; test votes not used
     t = time.time()
     p, _, _ = train(arrays(dd), lam, epochs=epochs)
     sec = time.time() - t
     v, w2, u = np.asarray(p["v"]), np.asarray(p["w2"]), np.asarray(p["u"])
-    g = v * w2                      # 有效模型向量: f(m, q) = g_m · z + u_m (v 与 w2 的分摊不可辨识, 合成 g 后消掉)
-    # g 本身仍只确定到 "整体平移 + 线性变换" (W 换一组基、g 反向变换, 输出不变)。
-    # 白化版: 用开发集 prompt 投影 z 的协方差 Σ, g_w = Σ^(1/2) (g − 各模型均值)。
-    # 这样两模型 g_w 的欧氏距离 = 两者"随 prompt 变化的适合度差"在 prompt 上的标准差, 和基的选择无关, 适合画投影图。
+    g = v * w2                      # effective model vector: f(m, q) = g_m · z + u_m (the split between v and w2 is not identifiable; combining into g removes it)
+    # g itself is only determined up to "a global shift + a linear transform" (change W's basis, transform g back, same output).
+    # Whitened version: with Σ the covariance of the dev-set prompt projections z, g_w = Σ^(1/2) (g − mean over models).
+    # Then the Euclidean distance between two models' g_w = the standard deviation over prompts of their prompt-dependent fit difference, independent of the basis; suitable for a projection plot.
     gi = np.unique(np.asarray(arrays(dd)[0]))
     Z = np.asarray(ns["E"][gi] @ p["W"] + p["b"], dtype=np.float64)
     ev, evec = np.linalg.eigh(np.cov(Z, rowvar=False))

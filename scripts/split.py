@@ -1,18 +1,18 @@
-"""split.py — Step 4: 固定划分 (按 group_id 分组)
+"""split.py — Step 4: fixed split (grouped by group_id)
 
-决策
-----
-D1 先留出 10% 的 prompt 组作为最终测试集 (split = "test"), 任何模型选择、调参、
-   甚至 BT 评分拟合都不许碰它。剩下 90% 为开发集 (split = "dev")。
-D2 开发集再按 group_id 做 5 折分组交叉验证 (fold = 0..4; 测试集 fold = -1)。
-   之后所有模型都用这同一组划分, 结果才能横向比较。
-D3 一律按 group_id 分: 同一 prompt 的所有票 (哪怕对上不同模型) 落在同一侧,
-   否则模型在训练时见过同一句话的投票结果, 测试分数会虚高。
-D4 固定随机种子 2026, 划分写进表里存档, 不在每次训练时临时生成。
-D5 测试集比例按"组"抽 10%; 因为大部分组只有 1 票, 按票算也接近 10%。
+Decisions
+---------
+D1 First hold out 10% of prompt groups as the final test set (split = "test"); no model selection,
+   tuning or even BT rating fit may touch it. The other 90% is the dev set (split = "dev").
+D2 The dev set gets 5-fold grouped cross-validation by group_id (fold = 0..4; test set fold = -1).
+   Every model afterwards uses this same split, so results are comparable.
+D3 Always split by group_id: all votes on one prompt (even against different models) fall on the same
+   side; otherwise a model has seen the votes on that exact prompt in training and scores are inflated.
+D4 Fixed seed 2026; the split is written into the table, not regenerated at training time.
+D5 The test share is 10% of groups; since most groups have a single vote, it is also close to 10% of votes.
 
-用法: python -I split.py <v2 根目录>
-输出: data/arena_labeled.parquet 增加 split / fold 两列 (原地更新); reports/step4_split.md
+Usage: python -I split.py <repo root>
+Output: adds split / fold columns to data/arena_labeled.parquet (in place); reports/step4_split.md
 """
 import sys
 from pathlib import Path
@@ -36,15 +36,15 @@ for k, (_, ev) in enumerate(GroupKFold(n_splits=5, shuffle=True, random_state=SE
                             .split(dev, groups=dev.group_id)):
     df.loc[dev.index[ev], "fold"] = k
 
-# 检查: 任何 group 只能出现在一个 (split, fold) 里
+# Check: every group appears in exactly one (split, fold)
 assert df.groupby("group_id")[["split", "fold"]].nunique().max().max() == 1
 df.to_parquet(path, index=False)
 
 tab = df.groupby(["split", "fold"]).agg(
-    票数=("id", "size"), prompt组数=("group_id", "nunique"),
-    平局=("is_tie", "mean"), 英文=("is_en", "mean")).round(3)
-tab["占比"] = (tab["票数"] / len(df)).round(3)
-md = ["# Step 4 固定划分", "", f"种子 {SEED}; 按 group_id 分组; 已校验没有任何 prompt 组跨折。", "",
+    votes=("id", "size"), prompt_groups=("group_id", "nunique"),
+    tie=("is_tie", "mean"), english=("is_en", "mean")).round(3)
+tab["share"] = (tab["votes"] / len(df)).round(3)
+md = ["# Step 4 fixed split", "", f"Seed {SEED}; grouped by group_id; checked that no prompt group crosses folds.", "",
       tab.to_markdown()]
 (root / "reports/step4_split.md").write_text("\n".join(md))
 print("\n".join(md))

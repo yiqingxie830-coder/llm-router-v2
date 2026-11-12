@@ -1,13 +1,17 @@
-"""r3_eval.py — 方案一 vs 方案二 的正式对比 (开发集 5 折, 口径 ②), 按 reports/r3_prereg.md
+"""r3_eval.py — formal comparison of approach 1 vs approach 2 (dev set 5-fold, view ②), following reports/r3_prereg.md
 
-同一批 ② eval 票、同一次 bootstrap 重采样 (1000 次, 按 prompt 组) 上同时算所有路由器, 所以路由器之间的差是配对的。
-- 主指标: 按调用比例的 APGR (用 P(赢) 排序), 和评分差基线比, 以及方案间的配对差。
-- 次要: 美元主案例 (高分方更贵的 ② 票) APGR$ 和 CPT$(50%), 排序键 = (P赢 − P输) / max(典型成本差, $0.25/千次);
-        配对内 APGR$ (下限) 复用 evaluate_cost.within_pairs。
-- Yiqing 加的: 按 has_single_answer 分组的 APGR; is_open_ended 等字段与方案一 PC1 坐标 t1 的秩相关。
+All routers are scored on the same ② eval votes and the same bootstrap resamples (1000, by prompt group),
+so differences between routers are paired.
+- Main metric: APGR on the call-share axis (ranked by P(win)), compared with the rating-gap baseline, plus paired
+  differences between approaches.
+- Secondary: main dollar case (② votes where the higher-rated model costs more) APGR$ and CPT$(50%),
+        ranking key = (P(win) − P(loss)) / max(typical cost gap, $0.25 per 1,000);
+        within-pair APGR$ (lower bound) reuses evaluate_cost.within_pairs.
+- Added on request: APGR by has_single_answer group; rank correlation of is_open_ended and other fields with
+  approach 1's PC1 coordinate t1.
 
-用法: python -I r3_eval.py <v2 根目录> [--final]
-产出: reports/r3_compare[_final].md / .json
+Usage: python -I r3_eval.py <repo root> [--final]
+Writes: reports/r3_compare[_final].md / .json
 """
 import json
 import sys
@@ -21,7 +25,7 @@ root = Path(sys.argv[1])
 use_final = "--final" in sys.argv
 sfx = "_final" if use_final else ""
 import os
-VAR = os.environ.get("R3_VARIANT", "")   # 例如 "_ep100": MF 类路由器换成最多 100 轮早停的敏感性版本
+VAR = os.environ.get("R3_VARIANT", "")   # e.g. "_ep100": MF routers switch to the sensitivity version with early stopping capped at 100 epochs
 
 src = (Path(__file__).parent / "evaluate_cost.py").read_text().split('\nif __name__ == "__main__":')[0]
 ns = {"__name__": "evc"}
@@ -35,17 +39,17 @@ N_BOOT, SEED, GRID, FINE = ns["N_BOOT"], ns["SEED"], ns["GRID"], ns["FINE"]
 ev = ns["ev"]
 ev = ev[ev.is_strong_vs_weak.values].reset_index(drop=True)
 
-# ---- 路由器: 名字 -> 预测文件 (列 p_win = P(赢), p = (1 + P赢 − P输)/2) ----
+# ---- routers: name -> prediction file (columns p_win = P(win), p = (1 + P(win) − P(loss))/2) ----
 P = root / "preds"
 files = {
-    "R1 (方案一, 全量票)": (P / f"r1b_win{sfx}.parquet", P / f"r1b_eff{sfx}.parquet"),
-    "R2 (方案一, 全量票)": (P / ("r2_nested.parquet" if not use_final else "r2_win_final.parquet"),
+    "R1 (approach 1, all votes)": (P / f"r1b_win{sfx}.parquet", P / f"r1b_eff{sfx}.parquet"),
+    "R2 (approach 1, all votes)": (P / ("r2_nested.parquet" if not use_final else "r2_win_final.parquet"),
                          P / ("r2_nested.parquet" if not use_final else "r2_eff_final.parquet")),
-    "R2-② (方案一, 只用 ② 票)": P / f"r3/r2sw{sfx}{VAR}.parquet",
+    "R2-② (approach 1, ② votes only)": P / f"r3/r2sw{sfx}{VAR}.parquet",
     "R3-LR": P / f"r3/r3lr{sfx}.parquet",
     "R3-MF": P / f"r3/r3mf{sfx}{VAR}.parquet",
-    "R3 (方案二, 每折选 LR/MF)": P / f"r3/r3{sfx}.parquet",
-    "R2 + R3 (组合)": P / f"r3/r2r3{sfx}{VAR}.parquet",
+    "R3 (approach 2, LR/MF chosen per fold)": P / f"r3/r3{sfx}.parquet",
+    "R2 + R3 (combined)": P / f"r3/r2r3{sfx}{VAR}.parquet",
 }
 pw, pe = {}, {}
 for name, f in files.items():
@@ -63,14 +67,14 @@ for name, f in files.items():
 
 p_bt = 1 / (1 + 10 ** (-ev.rating_gap.values / 400))
 tb = ev[["context", "id"]].merge(pd.read_parquet(P / f"base_tie_bucket{sfx}.parquet"), on=["context", "id"], how="left")
-BT, TIE = "评分差基线 (BT)", "带平局评分差基线 (正式)"
+BT, TIE = "rating-gap baseline (BT)", "rating-gap baseline with ties (formal)"
 pw = {BT: p_bt, TIE: tb.p_win.values, **pw}
 pe = {BT: p_bt, TIE: tb.p.values, **pe}
 names = list(pw)
-R2SW, R3, R2R3, R2 = "R2-② (方案一, 只用 ② 票)", "R3 (方案二, 每折选 LR/MF)", "R2 + R3 (组合)", "R2 (方案一, 全量票)"
+R2SW, R3, R2R3, R2 = "R2-② (approach 1, ② votes only)", "R3 (approach 2, LR/MF chosen per fold)", "R2 + R3 (combined)", "R2 (approach 1, all votes)"
 PAIRS = [(R3, R2SW), (R2R3, R2SW), (R3, R2), (R2R3, R2), (R2SW, R2), ("R3-LR", R2SW), ("R3-MF", R2SW)]
 
-# ---- 标签 和 PC1 坐标 ----
+# ---- labels and PC1 coordinates ----
 lab = []
 for line in open(root / "r3/r3_labels.jsonl", encoding="utf-8"):
     r = json.loads(line)
@@ -79,15 +83,15 @@ lab = pd.DataFrame(lab)
 ev = ev.merge(lab, on="group_id", how="left")
 
 q = ev.q_hi.values
-main = (ev.cost_class == "高分方更贵").values
+main = (ev.cost_class == "higher-rated costs more").values
 dt = np.maximum((ev.typ_hi - ev.typ_lo).values, FLOOR)
 extra = (ev.cost_hi - ev.cost_lo).values
 groups, gidx = np.unique(ev.group_id.values, return_inverse=True)
-hsa = ev.has_single_answer.values  # 缺失 (拒答) 的票不进分组表
+hsa = ev.has_single_answer.values  # votes with missing labels (refused) stay out of the group table
 
 
 def all_scores(w, rng):
-    """一次重采样 (权重 w) 下所有路由器的: 调用比例 APGR / CPT50, 美元主案例 APGR$ / CPT$50, 分组 APGR。"""
+    """For one resample (weights w), every router's: call-share APGR / CPT50, main dollar case APGR$ / CPT$50, APGR per group."""
     out = {}
     for n in names:
         pf = curve(q, pw[n], w, extra, rng)[1]
@@ -135,12 +139,12 @@ res = {"n_votes": int(len(q)), "n_groups": int(len(groups)), "n_main": int(main.
        "pairs": {f"{a} − {b}": {c: dci(a, b, j) for j, c in enumerate(COLS)} for a, b in PAIRS},
        "hsa_n": {g: int((hsa == g).sum()) for g in range(4)}}
 
-# ---- 配对内 APGR$ (下限) ----
+# ---- within-pair APGR$ (lower bound) ----
 wp_routers = {BASE: (2 * pe[TIE] - 1) / dt, **{n: (2 * pe[n] - 1) / dt for n in names if n not in (BT, TIE)}}
 d_main = ev[main].reset_index(drop=True)
 res["within_pairs"] = within_pairs(d_main, {k: v[main] for k, v in wp_routers.items()})
 
-# ---- 标签 与 PC1 (t1) 的秩相关 (开发集 ② prompt, 每个 prompt 一行) ----
+# ---- rank correlation of labels with PC1 (t1) (dev set ② prompts, one row per prompt) ----
 if not use_final:
     ax = pd.read_parquet(root / "data/r2_prompt_axes.parquet", columns=["group_id", "t1", "t2", "t1_oof"])
     pr = lab.merge(ax.drop_duplicates("group_id"), on="group_id")
@@ -154,41 +158,41 @@ if not use_final:
 
 (root / f"reports/r3_compare{sfx}{VAR}.json").write_text(json.dumps(res, ensure_ascii=False, indent=1))
 
-# ---- 报告 ----
+# ---- report ----
 f = lambda v: f"{v[0]:.3f} [{v[1]:.3f}, {v[2]:.3f}]"
-L = [f"# 方案一 vs 方案二 ({'测试集' if use_final else '开发集 5 折'}, 口径 ②)", "",
-     f"② 票 {res['n_votes']} 张, prompt 组 {res['n_groups']}; 美元主案例 {res['n_main']} 张。点估计 [95% 区间], 1000 次按 prompt 组配对 bootstrap。", "",
-     "## 主指标: 按调用比例 APGR", "", "| 路由器 | APGR | Δ vs 评分差基线 | CPT(50%) |", "|---|---|---|---|"]
+L = [f"# Approach 1 vs approach 2 ({'test set' if use_final else 'dev set 5-fold'}, view ②)", "",
+     f"{res['n_votes']} ② votes, {res['n_groups']} prompt groups; main dollar case {res['n_main']} votes. Point estimate [95% interval], 1000 paired bootstrap resamples by prompt group.", "",
+     "## Main metric: APGR on call share", "", "| Router | APGR | Δ vs rating-gap baseline | CPT(50%) |", "|---|---|---|---|"]
 for n in names:
     L.append(f"| {n} | {f(res['routers'][n]['APGR'])} | {f(res['vs_BT'][n]['APGR']) if n != BT else '—'} | {f(res['routers'][n]['CPT50'])} |")
-L += ["", "## 方案之间的配对差", "", "| 对比 | ΔAPGR | ΔAPGR$ (美元主案例) |", "|---|---|---|"]
+L += ["", "## Paired differences between approaches", "", "| Comparison | ΔAPGR | ΔAPGR$ (main dollar case) |", "|---|---|---|"]
 for k, v in res["pairs"].items():
     L.append(f"| {k} | {f(v['APGR'])} | {f(v['APGR$'])} |")
-L += ["", "## 美元主案例 (贵强档 vs 便宜弱档)", "", "| 路由器 | APGR$ | Δ vs 正式基线 | CPT$(50%) |", "|---|---|---|---|"]
+L += ["", "## Main dollar case (pricier strong vs cheaper weak)", "", "| Router | APGR$ | Δ vs formal baseline | CPT$(50%) |", "|---|---|---|---|"]
 for n in names:
     L.append(f"| {n} | {f(res['routers'][n]['APGR$'])} | {f(res['vs_TIE$'][n]) if n != TIE else '—'} | {f(res['routers'][n]['CPT$50'])} |")
 wp = res["within_pairs"]
-L += ["", f"## 配对内 APGR$ (下限; 票数 ≥ 30 的 {wp['n_pairs']} 个模型对, {wp['n_votes']} 票)", "",
-      "| 路由器 | 配对内 APGR$ | Δ vs 正式基线 |", "|---|---|---|"]
+L += ["", f"## Within-pair APGR$ (lower bound; {wp['n_pairs']} model pairs with ≥ 30 votes, {wp['n_votes']} votes)", "",
+      "| Router | within-pair APGR$ | Δ vs formal baseline |", "|---|---|---|"]
 for n, m in wp["metrics"].items():
-    k = "配对内APGR$ (按票数加权)"
+    k = "within-pair APGR$ (vote-weighted)"
     L.append(f"| {n} | {f(m[k])} | {f(m['Δ ' + k]) if 'Δ ' + k in m else '—'} |")
-L += ["", "## 按 has_single_answer 分组 (按调用比例 APGR)", "",
-      "| 路由器 | " + " | ".join(f"{g} 分 ({res['hsa_n'][g]} 票)" for g in range(4)) + " |", "|---|---|---|---|---|"]
+L += ["", "## By has_single_answer (APGR on call share)", "",
+      "| Router | " + " | ".join(f"score {g} ({res['hsa_n'][g]} votes)" for g in range(4)) + " |", "|---|---|---|---|---|"]
 for n in names:
     L.append(f"| {n} | " + " | ".join(f(res['routers'][n][f'hsa{g}']) for g in range(4)) + " |")
-L += ["", "相对评分差基线的提升:", "", "| 路由器 | " + " | ".join(f"{g} 分" for g in range(4)) + " |", "|---|---|---|---|---|"]
+L += ["", "Gain over the rating-gap baseline:", "", "| Router | " + " | ".join(f"score {g}" for g in range(4)) + " |", "|---|---|---|---|---|"]
 for n in names:
     if n != BT:
         L.append(f"| {n} | " + " | ".join(f(res['vs_BT'][n][f'hsa{g}']) for g in range(4)) + " |")
 if "spearman" in res:
     s = res["spearman"]
-    L += ["", f"## 标签与方案一 PC1 坐标的秩相关 (开发集 ② 的 {s['n_prompts']} 个 prompt)", "",
-          "t1 = 用全开发集向量算的 PC1 坐标; t1_oof = 折外版本 (每个 prompt 的坐标来自没见过它的折)。", "",
-          "| 字段 | 与 t1 | 与 t1_oof | 与 t2 |", "|---|---|---|---|"]
+    L += ["", f"## Rank correlation of labels with approach 1's PC1 coordinate ({s['n_prompts']} dev-set ② prompts)", "",
+          "t1 = PC1 coordinate from vectors trained on the full dev set; t1_oof = out-of-fold version (each prompt's coordinate comes from a fold that never saw it).", "",
+          "| Field | with t1 | with t1_oof | with t2 |", "|---|---|---|---|"]
     for k, v in s["by_field"].items():
         L.append(f"| {k} | {v['t1']} | {v['t1_oof']} | {v['t2']} |")
-    L += ["", "is_open_ended 各档的 t1_oof 均值: " + "; ".join(f"{int(a)} 分 {b} ({int(c)} 条)" for a, b, c in s["t1_mean_by_open_ended"]),
-          "", "各 task_type 的 t1_oof 均值: " + "; ".join(f"{a} {b} ({int(c)})" for a, b, c in s["t1_mean_by_task"])]
+    L += ["", "Mean t1_oof by is_open_ended: " + "; ".join(f"score {int(a)}: {b} ({int(c)} prompts)" for a, b, c in s["t1_mean_by_open_ended"]),
+          "", "Mean t1_oof by task_type: " + "; ".join(f"{a} {b} ({int(c)})" for a, b, c in s["t1_mean_by_task"])]
 (root / f"reports/r3_compare{sfx}{VAR}.md").write_text("\n".join(L))
 print("\n".join(L))

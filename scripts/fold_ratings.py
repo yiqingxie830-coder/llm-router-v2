@@ -1,36 +1,40 @@
-"""fold_ratings.py — Step 4 (下半): 每折独立拟合 Bradley-Terry, 重算标签与分层
+"""fold_ratings.py — Step 4 (second half): fit Bradley-Terry per fold, recompute labels and tiers
 
-为什么 (Yiqing 2026-11-09 提出的"评分泄漏")
+Why ("rating leakage", raised 2026-11-09)
 -----------------------------------------
-"谁是高分方""谁是强档"都来自 BT 评分。如果评分用全部票拟合, 测试集的票也参与了,
-等于测试答案的一部分提前流进了标签定义和特征 (评分差)。
-所以每一个"训练/评估情境 (context)"都只用它自己训练部分的票拟合评分:
-  - cv0..cv4: 用开发集里除第 k 折之外的票拟合, 给第 k 折 (评估) 和其余 4 折 (训练) 打标签
-  - final   : 用全部开发集 (90%) 拟合, 给测试集 (评估) 和开发集 (训练) 打标签
-每个情境里, 高分方、y_hi、y_hi_route、评分差、层级、强弱视图成员、y / y_route、软标签全部重算。
+"Who is the higher-rated side" and "who is in the strong tier" both come from BT ratings. If the ratings
+were fitted on all votes, test votes would take part, and part of the test answers would leak into the
+label definition and a feature (the rating gap).
+So every training/evaluation context fits ratings only on its own training votes:
+  - cv0..cv4: fit on dev votes outside fold k; label fold k (eval) and the other 4 folds (train)
+  - final   : fit on the whole dev set (90%); label the test set (eval) and the dev set (train)
+In every context the higher-rated side, y_hi, y_hi_route, rating gap, tiers, strong/weak view membership,
+y / y_route and the soft labels are all recomputed.
 
-其他决策
---------
-D1 BT 拟合方法与 tier_models.py 完全相同 (逻辑回归, 平局拆半票, Elo 刻度, 平均 1000)。
-D2 强弱档 = 固定名单 (Yiqing 2026-11-09 决定), 不再每折跑 k-means:
-   - 原因: 一维 k-means (以及 RouteLLM 的动态规划分层) 在 cv0 上把最高两层合并,
-     "层 1-2" 从 10 个模型跳到 21 个, 各折的口径 ② 票集合不同, 分数不能平均。
-   - 做法: 只用 90% 开发集拟合一次 BT (= final 情境), 画名次–分数图
-     (reports/step4_rank_rating.png), 在明显断层处切:
-       第 10 / 11 名之间 21.4 分 -> 前 10 名为强档
-       第 40 / 41 名之间 24.6 分 -> 后 11 名为弱档
-       第 11-40 名 (30 个模型) 为中间带, 不进口径 ②
-     第 11-40 名内部最大分差只有 9.1 分, 没有其他明显断层。
-   - 稳定性: 两条切线两侧的模型, 在 6 个情境下的分数区间都不重叠, 所以名单对任何一折都成立。
-   - 名单只用开发集决定, 测试集没有参与。
-D3 某模型在某情境的训练票里没出现 (只有极少数冷门模型): 评分记为 1000 (平均),
-   不进任何档; n_games 列可以看出来。
-D4 本脚本只生成标签, 不训练任何路由器。
+Other decisions
+---------------
+D1 The BT fit is identical to tier_models.py (logistic regression, ties as half votes, Elo scale, mean 1000).
+D2 Strong / weak tiers = fixed lists (decided 2026-11-09), no per-fold k-means:
+   - Why: one-dimensional k-means (and RouteLLM's dynamic-programming tiers) merged the top two tiers on
+     cv0, so "tiers 1-2" jumped from 10 to 21 models; the strong-vs-weak vote set then differed by fold
+     and scores could not be averaged.
+   - How: fit BT once on the 90% dev set (= the final context), plot rank vs rating
+     (reports/step4_rank_rating.png) and cut at the clear gaps:
+       21.4 points between ranks 10 / 11 -> top 10 = strong tier
+       24.6 points between ranks 40 / 41 -> bottom 11 = weak tier
+       ranks 11-40 (30 models) = middle band, not part of the strong-vs-weak view
+     The largest gap inside ranks 11-40 is only 9.1 points; there is no other clear break.
+   - Stability: on either side of both cuts, the models' rating ranges across the 6 contexts do not
+     overlap, so the lists hold for every fold.
+   - The lists were set from the dev set only; the test set played no part.
+D3 A model absent from a context's training votes (only a few rare models): rating set to 1000 (the mean),
+   no tier; visible in the n_games column.
+D4 This script only builds labels; it trains no router.
 
-用法: python -I fold_ratings.py <v2 根目录>
-输出:
-  data/fold_labels.parquet           长表: 每个 (context, id) 一行, 含该情境下的全部标签
-  data/arena_strong_vs_weak.parquet  final 情境下的强弱评估视图 (测试 + 开发), 带 fold
+Usage: python -I fold_ratings.py <repo root>
+Output:
+  data/fold_labels.parquet           long table: one row per (context, id) with all labels for that context
+  data/arena_strong_vs_weak.parquet  strong-vs-weak evaluation view in the final context (test + dev), with fold
   reports/step4_ratings_by_context.csv, reports/step4_fold_labels.md
 """
 import sys
@@ -74,7 +78,7 @@ def fit_bt(d):
 
 
 def tiers(rt):
-    """固定名单: strong / weak / mid (中间带或出场太少的模型)。"""
+    """Fixed lists: strong / weak / mid (middle band or models with too few games)."""
     return rt.model.map(lambda m: "strong" if m in STRONG_MODELS else "weak" if m in WEAK_MODELS else "mid")
 
 
@@ -102,17 +106,17 @@ for ctx, (tr_mask, ev_mask) in contexts.items():
     hi_won = np.where(a_hi, d.winner == "model_a", d.winner == "model_b")
     d["y_hi"] = np.where(d.is_tie, np.nan, hi_won.astype(float))
     d["y_hi_route"] = np.where(d.is_tie, 0.0, hi_won.astype(float))
-    # 评估时用的质量分: 发给高分方的得分 (高分方胜 1 / 平局 0.5 / 输 0)
+    # Quality score used in evaluation: score of sending to the higher-rated side (win 1 / tie 0.5 / loss 0)
     d["q_hi"] = np.where(d.is_tie, 0.5, hi_won.astype(float))
     sa = d.tier_a.eq("strong") & d.tier_b.eq("weak")
     sb = d.tier_b.eq("strong") & d.tier_a.eq("weak")
-    # 保险: 固定名单里的强档必须在本情境评分上高于弱档, 否则"强档 = 高分方"不成立
+    # Safety check: in this context every listed strong model must outrank every weak one, or "strong = higher-rated" fails
     assert r[STRONG_MODELS].min() > r[WEAK_MODELS].max(), ctx
     d["is_strong_vs_weak"] = sa | sb
     strong_won = np.where(sa, d.winner == "model_a", d.winner == "model_b")
     d["y"] = np.where(d.is_strong_vs_weak & ~d.is_tie, strong_won.astype(float), np.nan)
     d["y_route"] = np.where(d.is_strong_vs_weak, (strong_won & ~d.is_tie).astype(float), np.nan)
-    # 软标签: 同一情境内按 group 聚合 (group 不跨折, 所以不会混入评估票)
+    # Soft labels: aggregated by group within a context (groups never cross folds, so no eval votes mix in)
     g = d.assign(v=d.y_hi.fillna(0.5)).groupby("group_id")
     d["soft_label_hi"] = g.v.transform("mean")
     d["soft_label_hi_route"] = g.y_hi_route.transform("mean")
@@ -133,7 +137,7 @@ prompts = pd.read_parquet(root / "data/arena_labeled.parquet", columns=["id", "p
 fin = fl[(fl.context == "final") & fl.is_strong_vs_weak].merge(prompts, on="id")
 fin.to_parquet(root / "data/arena_strong_vs_weak.parquet", index=False)
 
-# ---------- 报告: 翻转统计 ----------
+# ---------- report: flip statistics ----------
 hi_n = fl.groupby("id").hi_model.nunique()
 gap_full = pd.read_parquet(root / "data/arena_labeled.parquet", columns=["id", "rating_gap"]).set_index("id").rating_gap
 flipped = hi_n[hi_n > 1].index
@@ -142,20 +146,20 @@ sw_changed = (sw_n["min"] != sw_n["max"]).sum()
 wide = rts.pivot(index="model", columns="context", values="rating")
 gap_bins = pd.cut(gap_full.loc[flipped], [0, 5, 10, 20, 50, 1e9], include_lowest=True).value_counts().sort_index()
 
-md = ["# Step 4 每折独立拟合 BT 的结果", "",
-      "## 各情境的票数与强弱视图规模", "",
-      fl.groupby(["context", "role"]).agg(票数=("id", "size"), 强弱视图=("is_strong_vs_weak", "sum"),
-                                          高分方明确胜=("y_hi_route", "mean")).round(3).to_markdown(), "",
-      "## 高分方翻转", "",
-      f"- 一共 {hi_n.size} 票, 在不同情境之间高分方发生翻转的: **{len(flipped)} 票 ({len(flipped) / hi_n.size:.2%})**",
-      f"- 涉及的模型对: {fl[fl.id.isin(flipped)].drop_duplicates('id').apply(lambda x: ' vs '.join(sorted([x.model_a, x.model_b])), axis=1).nunique()} 对",
-      "- 翻转票按全量评分差分布 (翻转只发生在两个模型本来就很接近的地方):", "",
-      gap_bins.to_frame("票数").to_markdown(), "",
-      f"## 强弱视图成员变化: {sw_changed} 票在某些情境属于强弱视图、在另一些不属于 (固定名单, 应为 0)", "",
-      f"各情境中强档最低分 vs 弱档最高分: " + ", ".join(
+md = ["# Step 4 Bradley-Terry fitted per fold", "",
+      "## Votes and strong-vs-weak view size per context", "",
+      fl.groupby(["context", "role"]).agg(votes=("id", "size"), strong_vs_weak=("is_strong_vs_weak", "sum"),
+                                          higher_rated_clear_win=("y_hi_route", "mean")).round(3).to_markdown(), "",
+      "## Flips of the higher-rated side", "",
+      f"- Of {hi_n.size} votes, the higher-rated side flips between contexts on **{len(flipped)} votes ({len(flipped) / hi_n.size:.2%})**",
+      f"- Model pairs involved: {fl[fl.id.isin(flipped)].drop_duplicates('id').apply(lambda x: ' vs '.join(sorted([x.model_a, x.model_b])), axis=1).nunique()}",
+      "- Flipped votes by full-data rating gap (flips happen only where the two models were already very close):", "",
+      gap_bins.to_frame("votes").to_markdown(), "",
+      f"## Strong-vs-weak view membership changes: {sw_changed} votes are in the view in some contexts but not others (fixed lists, should be 0)", "",
+      f"Lowest strong-tier rating vs highest weak-tier rating per context: " + ", ".join(
           f"{c}: {g[g.model.isin(STRONG_MODELS)].rating.min():.0f} > {g[g.model.isin(WEAK_MODELS)].rating.max():.0f}"
           for c, g in rts.groupby("context")), "",
-      "## 各情境评分的最大差异 (同一模型, max - min)", "",
-      (wide.max(axis=1) - wide.min(axis=1)).describe().round(1).to_frame("分").to_markdown()]
+      "## Largest rating difference across contexts (same model, max - min)", "",
+      (wide.max(axis=1) - wide.min(axis=1)).describe().round(1).to_frame("points").to_markdown()]
 (root / "reports/step4_fold_labels.md").write_text("\n".join(md))
 print("\n".join(md))

@@ -1,81 +1,81 @@
-# 阶段 2 · R1 与 R2：读 prompt 的路由器（开发集 5 折，测试集未动）
+# Stage 2 · R1 and R2: routers that read the prompt (dev set 5-fold, test set untouched)
 
-**一句话结论：** 读 prompt 有用。按调用比例算，R2（矩阵分解）在强弱档把 APGR 从 0.534 提到 0.588（+0.054），R1（逻辑回归）提到 0.581（+0.047），区间都不含 0。把 prompt 向量随机打乱后重训，提升会消失，说明提升确实来自 prompt 内容。
+**In one sentence:** reading the prompt helps. On the call-share axis, R2 (matrix factorization) raises strong-vs-weak APGR from 0.534 to 0.588 (+0.054) and R1 (logistic regression) to 0.581 (+0.047), both with intervals excluding 0. Retraining with the prompt vectors randomly shuffled makes the gain disappear, so it really comes from prompt content.
 
-**读 prompt 的收益按区间并报（Yiqing 2026-11-10 定）：**
-- **上限：** 强弱档 +0.047（R1）/ +0.054（R2）。这是 99 个模型对混排的结果，包含跨配对的收益。
-- **下限：** 配对内 APGR$ 比随机高 +0.028（R1）/ +0.022（R2）。这对应只有一对模型的产品场景。
+**The gain from reading the prompt is reported as a range (decided 2026-11-10):**
+- **Upper bound:** strong vs weak +0.047 (R1) / +0.054 (R2). This ranks 99 model pairs together and includes gains across pairs.
+- **Lower bound:** within-pair APGR$ is +0.028 (R1) / +0.022 (R2) above random. This corresponds to a product with a single model pair.
 
-## 1. 统一规则（Yiqing 2026-11-10 定）
-- **预期质量提升 = P(赢) − P(输)。** 质量分的规则是赢 1、平 0.5、输 0。发给高分方比发给低分方，预期多拿 [P(赢) + 0.5·P(平)] − [P(输) + 0.5·P(平)] 分。
-- **美元排序** = (P(赢) − P(输)) ÷ max(典型成本差, 每千次 $0.25)。
-- **路由器和基线都按三分类（赢 / 平 / 输）给出 P(赢) 和 P(输)。** 不接受「路由器用三分类、基线用二分类」这种不对等的比较。
+## 1. Common rules (decided 2026-11-10)
+- **Expected quality gain = P(win) − P(loss).** Quality is win 1, tie 0.5, loss 0. Routing to the higher-rated instead of the lower-rated model gains [P(win) + 0.5·P(tie)] − [P(loss) + 0.5·P(tie)] in expectation.
+- **Dollar ranking** = (P(win) − P(loss)) ÷ max(typical cost gap, $0.25 per 1,000).
+- **Routers and baselines both give P(win) and P(loss) from three classes (win / tie / loss).** An unequal comparison such as "3-class router vs binary baseline" is not accepted.
 
-## 2. 带平局的正式基线（scripts/tie_baselines.py）
-- **正式版本：分桶经验比例。** 只用每个情境自己的 train 票，按评分差的 10 分位分桶，每桶算加权（1/n_votes）的赢 / 平 / 输比例。以 cv0 为例：评分差最小的那一桶，赢 / 平 / 输 = 0.36 / 0.30 / 0.34；评分差最大的那一桶 = 0.63 / 0.20 / 0.17。
-- **核对版本：** 只用评分差的三分类逻辑回归，以及旧的 BT 半票版。
+## 2. The formal baseline with ties (scripts/tie_baselines.py)
+- **Formal version: empirical bucket shares.** Using only each context's own train votes, bucket by deciles of the rating gap and compute the weighted (1/n_votes) win / tie / loss shares per bucket. For cv0, the smallest-gap bucket has win / tie / loss = 0.36 / 0.30 / 0.34, and the largest-gap bucket 0.63 / 0.20 / 0.17.
+- **Check versions:** a 3-class logistic regression on the rating gap only, and the old BT half-vote version.
 
-| 美元口径 APGR$ | 分桶版（正式） | 三分类逻辑回归版 | BT 半票版（旧） |
+| Dollar-axis APGR$ | Bucket version (formal) | 3-class logistic version | BT half-vote (old) |
 |---|---|---|---|
-| ① 合并 | 0.768 | 0.768 | 0.768 |
+| ① pooled | 0.768 | 0.768 | 0.768 |
 | ① < 50 | 0.819 | 0.820 | 0.814 |
-| ② 美元主案例 | 0.620 | 0.623 | 0.623 |
+| ② main dollar case | 0.620 | 0.623 | 0.623 |
 
-三个版本相差不超过 0.006，区间都包含 0。也就是说，旧基线本来就按半票处理了平局，结论不受基线版本影响。
+The three versions differ by at most 0.006, and their differences have intervals containing 0. In other words, the old baseline already treated ties as half votes, and the conclusion does not depend on the baseline version.
 
-## 3. 结果
+## 3. Results
 
-**按调用比例（和评分差基线比，ΔAPGR [95% 区间]）**
+**Call-share axis (against the rating-gap baseline, ΔAPGR [95% interval])**
 
-| 口径 | 评分差基线 | R1 三分类 | R2 MF | R2 打乱向量对照 |
+| View | Rating-gap baseline | R1 3-class | R2 MF | R2 shuffled-vector control |
 |---|---|---|---|---|
-| ① 合并 | 0.668 | 0.683（+0.015 [0.011, 0.019]） | **0.711**（+0.043 [0.038, 0.049]） | 0.668（−0.000） |
-| ① < 50 | 0.645 | 0.634（−0.012，不显著） | **0.778**（+0.133 [0.100, 0.165]） | 0.644 |
-| ① 50–150 | 0.580 | 0.616（+0.036） | **0.640**（+0.059） | 0.579 |
-| ① > 150 | 0.530 | 0.575（+0.046） | **0.584**（+0.054） | 0.529 |
-| ② 强弱档 | 0.534 | 0.581（+0.047 [0.038, 0.056]） | **0.588**（+0.054 [0.043, 0.068]） | 0.530 |
+| ① pooled | 0.668 | 0.683 (+0.015 [0.011, 0.019]) | **0.711** (+0.043 [0.038, 0.049]) | 0.668 (−0.000) |
+| ① < 50 | 0.645 | 0.634 (−0.012, not significant) | **0.778** (+0.133 [0.100, 0.165]) | 0.644 |
+| ① 50–150 | 0.580 | 0.616 (+0.036) | **0.640** (+0.059) | 0.579 |
+| ① > 150 | 0.530 | 0.575 (+0.046) | **0.584** (+0.054) | 0.529 |
+| ② strong vs weak | 0.534 | 0.581 (+0.047 [0.038, 0.056]) | **0.588** (+0.054 [0.043, 0.068]) | 0.530 |
 
-**美元口径（和带平局的正式基线比，ΔAPGR$）**
+**Dollar axis (against the formal baseline with ties, ΔAPGR$)**
 
-| 口径 | 正式基线 | R1 | R2 |
+| View | Formal baseline | R1 | R2 |
 |---|---|---|---|
-| ① 合并 | 0.768 | 0.757（−0.011 [−0.016, −0.004]） | 0.774（+0.006 [−0.001, 0.013]） |
-| ① < 50 | 0.819 | 0.757（−0.062） | **0.866**（+0.046 [0.003, 0.095]） |
-| ① 50–150 | 0.753 | 0.750（−0.003） | 0.751（−0.002） |
-| ① > 150 | 0.613 | 0.619（+0.006） | 0.616（+0.003） |
-| ② 美元主案例 | 0.620 | **0.631**（+0.011 [0.002, 0.020]） | 0.628（+0.008 [−0.005, 0.021]） |
+| ① pooled | 0.768 | 0.757 (−0.011 [−0.016, −0.004]) | 0.774 (+0.006 [−0.001, 0.013]) |
+| ① < 50 | 0.819 | 0.757 (−0.062) | **0.866** (+0.046 [0.003, 0.095]) |
+| ① 50–150 | 0.753 | 0.750 (−0.003) | 0.751 (−0.002) |
+| ① > 150 | 0.613 | 0.619 (+0.006) | 0.616 (+0.003) |
+| ② main dollar case | 0.620 | **0.631** (+0.011 [0.002, 0.020]) | 0.628 (+0.008 [−0.005, 0.021]) |
 
-**配对内 APGR$**（68 个模型对、6,559 票，每对内部单独算，再按票数加权）
+**Within-pair APGR$** (68 model pairs, 6,559 votes; computed inside each pair, then weighted by votes)
 
-| | 正式基线 | R1 | R2 |
+| | Formal baseline | R1 | R2 |
 |---|---|---|---|
-| 点估计 [95% 区间] | 0.508 [0.491, 0.530] | **0.528** [0.510, 0.548] | **0.522** [0.506, 0.546] |
-| 和随机期望 0.5 比 | — | +0.028，区间在 0.5 以上 | +0.022，区间在 0.5 以上 |
-| 和正式基线比 | — | +0.020 [−0.007, 0.045] | +0.015 [−0.015, 0.045] |
+| Point estimate [95% interval] | 0.508 [0.491, 0.530] | **0.528** [0.510, 0.548] | **0.522** [0.506, 0.546] |
+| vs random expectation 0.5 | — | +0.028, interval above 0.5 | +0.022, interval above 0.5 |
+| vs formal baseline | — | +0.020 [−0.007, 0.045] | +0.015 [−0.015, 0.045] |
 
-同一对模型里，正式基线只剩随机打平（各票的 p 相同），所以它的期望就是 0.5。拿路由器去和这条带噪声的随机线逐次相减，会把噪声加进来。所以这个指标主要看路由器自己的区间是否高于 0.5。
+Within one model pair, the formal baseline is left with only random tie-breaking (every vote has the same p), so its expectation is 0.5. Subtracting this noisy random line from a router resample by resample adds its noise, so this metric is read mainly from whether the router's own interval sits above 0.5.
 
-## 4. 怎么解读（产品场景 vs Arena 混合）
-1. **在只有一对模型的产品场景里，价格差是常数**，美元曲线和调用比例曲线形状一样。这时最贴近产品的指标是**配对内 APGR$**：R1 是 0.528，R2 是 0.522，都比随机好 0.02 到 0.03，区间不含 0.5。这就是「读 prompt」在单一配对下的有效收益。
-2. **强弱档 +0.047 / +0.054 是 99 个模型对混在一起排序得到的。** 它除了包含同一对模型内部的排序，还包含「判断出这条 prompt 难之后，优先在强弱差距大的那几对里发给强模型」这种跨配对的收益。只加模型身份、不看 prompt 的对照几乎没有提升，所以这部分收益仍然来自 prompt。但是在单一配对的产品里，跨配对那部分拿不到，所以 +0.047 应该看作上限，配对内的 +0.02 到 0.03 才是下限。两者在所有对外材料里并报。
-3. **美元合并口径的 ±0.01 反映的是 Arena 里多种配对混在一起的情况**，不代表产品现实。在这里，价格差（1.9 到 33 倍）主导了排序，prompt 信号只是叠加上去的一小部分。
-4. **R2 在评分差 < 50 的分桶里提升很大（+0.133）。** 这类配对里两个模型实力接近，谁赢主要看 prompt 类型和模型风格是否对得上，比如写代码和写创意内容。矩阵分解能学到「这个模型擅长这类 prompt」，线性的 R1 学不到。打乱向量后这部分提升消失，所以它来自 prompt 内容，不是泄漏。这部分收益在「两个价格不同、实力接近的模型」这种产品场景里最有价值。
+## 4. Interpretation (product scenario vs the Arena mix)
+1. **In a product with a single model pair, the price gap is constant**, and the dollar curve has the same shape as the call-share curve. The metric closest to the product is then **within-pair APGR$**: R1 0.528 and R2 0.522, both 0.02 to 0.03 better than random, with intervals excluding 0.5. That is the effective gain from reading the prompt in a single pair.
+2. **Strong vs weak +0.047 / +0.054 comes from ranking 99 model pairs together.** Besides ranking within a pair, it includes cross-pair gains such as "having judged this prompt hard, send to the strong model first in the pairs with the biggest strong-weak gap". A control that adds model identity without reading the prompt gains almost nothing, so this part still comes from the prompt. But a single-pair product cannot capture the cross-pair part, so +0.047 should be read as the upper bound and the within-pair +0.02 to 0.03 as the lower bound. All external material reports both.
+3. **The ±0.01 in the pooled dollar view reflects Arena's mix of many pairs**, not a product reality. There the price gap (1.9 to 33 times) dominates the ranking, and the prompt signal is a small addition on top.
+4. **R2 gains a lot in the rating gap < 50 bucket (+0.133).** In these pairs the two models are close in strength, and who wins depends mainly on whether the prompt type matches the model's style, for example writing code vs creative writing. Matrix factorization can learn "this model is good at this kind of prompt"; the linear R1 cannot. With shuffled vectors this gain disappears, so it comes from prompt content, not leakage. This gain is most valuable in a product with "two models at different prices but close in strength".
 
-## 5. 主案例 CPT(50%) 的美元换算（每千次请求）
-在主案例里，全发低分方的成本是 $3.55，全发高分方是 $18.89。PGR 达到 50% 时的成本如下（CPT 网格精度是 1%，所以误差约 ±$0.15）：
+## 5. Main-case CPT(50%) in dollars (per 1,000 requests)
+In the main case, sending everything to the lower-rated model costs $3.55 and everything to the higher-rated model $18.89. Cost at 50% PGR (CPT is on a 1% grid, so the error is about ±$0.15):
 
-| | CPT$(50%) | 每千次成本 | 比正式基线省 | 比全发强模型省 |
+| | CPT$(50%) | Cost per 1,000 | Saved vs formal baseline | Saved vs all-strong |
 |---|---|---|---|---|
-| 正式基线 | 0.37 | $9.23 | — | $9.66（51%） |
-| R1 | 0.32 | $8.46 | $0.77（8%） | $10.43（55%） |
-| R2 | 0.32 | $8.46 | $0.77（8%） | $10.43（55%） |
+| Formal baseline | 0.37 | $9.23 | — | $9.66 (51%) |
+| R1 | 0.32 | $8.46 | $0.77 (8%) | $10.43 (55%) |
+| R2 | 0.32 | $8.46 | $0.77 (8%) | $10.43 (55%) |
 
-这里的 PGR 50% 指的是收回强弱模型之间一半的质量差距。按这个标准，「读 prompt」带来的额外节省大约是每千次请求 $0.8；大部分节省来自「先发给便宜又明显更好的配对」，基线已经能做到。
+PGR 50% here means recovering half of the quality gap between the strong and weak models. By that standard, the extra saving from reading the prompt is about $0.8 per 1,000 requests; most of the saving comes from "send first to the pairs that are cheap and clearly better", which the baseline already does.
 
-## 6. 超参数怎么选的（只在训练折内，测试集从未参与）
-**R1 的 C**（详见 reports/r1_c_selection.md）：每个外层折只用自己的 train 票，按 prompt 组再切 80/20，在 80% 上训练，用 20% 上的对数损失选 C，然后在整份 train 上重训，再预测该折的 eval 票。eval 票和测试集都不参与。5 个折都选中了 C = 0.1。（第一版报告里的 C 是用 5 折 eval 票的平均对数损失选的，结果同样是 0.1；那种做法不够严格，现在已经改掉。）
+## 6. How hyperparameters were chosen (inside training folds only; the test set never took part)
+**R1's C** (see reports/r1_c_selection.md): each outer fold uses only its own train votes, splits them 80/20 again by prompt group, trains on 80% and chooses C by log loss on 20%, then retrains on the whole train part and predicts that fold's eval votes. Neither eval votes nor the test set take part. All 5 folds chose C = 0.1. (The first version of this report chose C by mean log loss over the 5 folds' eval votes, also landing on 0.1; that was not strict enough and has been replaced.)
 
-| C | 内层验证对数损失 | 强弱档 APGR | 美元主案例 APGR$ | 主案例 CPT$(50%) |
+| C | Inner validation log loss | Strong vs weak APGR | Main dollar case APGR$ | Main case CPT$(50%) |
 |---|---|---|---|---|
 | 0.01 | 1.0386 | 0.568 | 0.628 | 0.33 |
 | 0.03 | 1.0368 | 0.577 | 0.630 | 0.33 |
@@ -83,23 +83,23 @@
 | 0.3 | 1.0370 | 0.579 | 0.631 | 0.32 |
 | 1.0 | 1.0391 | 0.576 | 0.631 | 0.33 |
 
-C 从 0.03 到 1 之间，强弱档 APGR 在 0.577 到 0.581 之间，主案例在 0.630 到 0.631 之间，所以结论不依赖 C。
+For C from 0.03 to 1, strong-vs-weak APGR stays between 0.577 and 0.581 and the main case between 0.630 and 0.631, so the conclusion does not depend on C.
 
-**R2 的设置**（reports/r2_selection.md）：k = 64，Adam 学习率 1e-3，用同样的内层 80/20 切分做早停并选 λ。第一轮 λ 扫了 {1e-5, 1e-4, 1e-3}，结果选中了最小的 1e-5，落在网格边缘（见 r2_selection_round1.md）。第二轮扩成 {0, 1e-6, 1e-5, 1e-4}，4 个折选 1e-5，1 个折选 1e-6，都不在边缘了。
+**R2's settings** (reports/r2_selection.md): k = 64, Adam learning rate 1e-3, early stopping and choice of λ on the same inner 80/20 split. Round 1 swept λ over {1e-5, 1e-4, 1e-3} and chose the smallest, 1e-5, at the grid edge (see r2_selection_round1.md). Round 2 widened it to {0, 1e-6, 1e-5, 1e-4}: 4 folds chose 1e-5 and 1 fold 1e-6, none at the edge.
 
-## 7. R3：Haiku 打标费用（只打口径 ② 的 9,332 票）
-- 去重后有 **9,247 个 prompt**（开发集 8,333 票 + 测试集 999 票；只有打标，不算评估）。
-- 每次调用的输入 = v1 的 8 维评分说明（约 1,760 字符，约 450 token）+ 结构化输出的格式说明（约 200 token）+ prompt 本身（平均约 92 token，最长的 1% 超过 1,900 token）。只有 1.7% 的 prompt 超过 4,000 字符，所以建议**不截断**，多花的不到 $0.05。
-- 输出 = 8 个分数的 JSON（约 60 token）+ 思考 token。Haiku 5.5 默认会思考，effort 设成 low 时估计每次多 0 到 300 token。
-- 单价：Claude Haiku 5.5 输入每百万 token $0.10，输出每百万 token $0.50。评分说明只有约 650 token，达不到缓存的最低长度，所以不考虑提示缓存。
+## 7. R3: Haiku labeling cost (view ② only, 9,332 votes)
+- After deduplication there are **9,247 prompts** (8,333 dev votes + 999 test votes; labeling only, no evaluation).
+- Input per call = v1's 8-dimension scoring instructions (about 1,760 characters, about 450 tokens) + the structured-output format (about 200 tokens) + the prompt itself (about 92 tokens on average; the longest 1% exceed 1,900 tokens). Only 1.7% of prompts exceed 4,000 characters, so the recommendation is **no truncation**; it costs under $0.05 more.
+- Output = a JSON of 8 scores (about 60 tokens) + thinking tokens. Haiku 5.5 thinks by default; with effort low, an estimated 0 to 300 extra tokens per call.
+- Prices: Claude Haiku 5.5 input $0.10 per million tokens, output $0.50 per million. The scoring instructions are only about 650 tokens, below the minimum cacheable length, so prompt caching is not considered.
 
-| | 输入 | 输出 | 合计 | 用 Batch API（5 折） |
+| | Input | Output | Total | With the Batch API (half price) |
 |---|---|---|---|---|
-| token 数 | 约 690 万（按 Claude 分词器可能多到 1.35 倍） | 55 万 到 330 万 | | |
-| 费用 | $0.69 到 $0.93 | $0.28 到 $1.65 | **约 $1.0 到 $2.6** | **约 $0.5 到 $1.3** |
+| Tokens | about 6.9M (up to 1.35× by the Claude tokenizer) | 0.55M to 3.3M | | |
+| Cost | $0.69 to $0.93 | $0.28 to $1.65 | **about $1.0 to $2.6** | **about $0.5 to $1.3** |
 
-- 要拿到准确的数，需要先用 count_tokens 数一遍输入，再试打 50 条，量出实际的输出和思考 token。试打 50 条的花费不到 $0.02。这一步需要 API key：云端没有，你的 Mac 上 module 4 目录下的 .env 里有。
-- 如果换成 v1 用的 Claude Sonnet 5.5（每百万 token $2 / $10），费用大约是 20 倍，即 $20 到 $50。
+- For exact figures, first count the input with count_tokens, then run a 50-prompt pilot to measure actual output and thinking tokens. The 50-prompt pilot costs under $0.02. This step needs an API key, which the cloud environment does not have; it is run on the author's own machine.
+- With Claude Sonnet 5.5 as in v1 ($2 / $10 per million tokens) the cost would be about 20 times higher, $20 to $50.
 
-## 文件
-scripts/tie_baselines.py、train_r1.py、train_r1b.py、r1_csweep.py、train_r2_mf.py（支持 --shuffle 对照）、evaluate.py、evaluate_cost.py；preds/ 下有各路由器在每一折的预测；详表在 reports/eval_R1_三分类*.md、eval_R2_MF*.md、eval_R2_MF_打乱向量对照.md。
+## Files
+scripts/tie_baselines.py, train_r1.py, train_r1b.py, r1_csweep.py, train_r2_mf.py (supports the --shuffle control), evaluate.py, evaluate_cost.py; preds/ holds each router's per-fold predictions; detailed tables in reports/eval_R1_3class*.md, eval_R2_MF*.md, eval_R2_MF_shuffled_vectors.md.

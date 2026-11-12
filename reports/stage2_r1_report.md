@@ -1,57 +1,57 @@
-> **已被 stage2_r1_r2_report.md 取代（2026-11-10）。** 本文的美元对比用的是二分类基线，C 是用 5 折 eval 票选的，两处都已更正。
+> **Superseded by stage2_r1_r2_report.md (2026-11-10).** The dollar comparison here used the binary baseline, and C was chosen on the 5 folds' eval votes; both have since been corrected.
 
-# 阶段 2 · R1：prompt 向量 + 评分差 + 模型身份 → 逻辑回归（开发集 5 折，测试集未动）
+# Stage 2 · R1: prompt vector + rating gap + model identity → logistic regression (dev set 5-fold, test set untouched)
 
-**一句话结论：** 读 prompt 确实有用。按调用比例算，强弱档的 APGR 从 0.534 提到 0.581（+0.047，区间不含 0），达到了「值得做」的门槛（+0.03）。在美元口径下，价格差带来的信号远大于 prompt 带来的信号：主案例只比正式基线高 0.008，同价格配对内高 0.034，而合并口径反而低了 0.011。
+**In one sentence:** reading the prompt does help. On the call-share axis, strong-vs-weak APGR rises from 0.534 to 0.581 (+0.047, interval excludes 0), which clears the "worth doing" bar (+0.03). On the dollar axis, the signal from the price gap is far larger than the signal from the prompt: the main case is only 0.008 above the formal baseline, within same-price pairs it is 0.034 higher, and the pooled view is actually 0.011 lower.
 
-## 1. 向量
-- 用 intfloat/multilingual-e5-large 在 Colab 上跑（Yiqing），输入前加「query: 」，超过 512 token 截断，mean pooling 后做 L2 归一化，共 95,373 × 1024 维，float16。
-- 和云端先算的 6,000 行比，余弦相似度中位数 1.0000，最小 0.99996。另外抽 35 条较长的 prompt（26 到 119,164 个字符，含被截断的超长文本）在云端重算，最小也有 0.99997。
+## 1. Vectors
+- intfloat/multilingual-e5-large, run on Colab, with the "query: " prefix, truncated beyond 512 tokens, mean pooling then L2 normalization: 95,373 × 1024, float16.
+- Against 6,000 rows computed earlier in the cloud, the median cosine similarity is 1.0000 and the minimum 0.99996. Another 35 longer prompts (26 to 119,164 characters, including very long truncated ones) were recomputed in the cloud, with a minimum of 0.99997.
 
-## 2. 模型
-- 用逻辑回归。特征是三块：评分差 ÷ 100；模型身份（高分方 +1、低分方 −1，共 53 维）；prompt 向量。样本权重 = 1 / n_votes。每个情境只用自己的 train 票训练，评分也来自该情境自己的 BT 拟合。
-- 正则强度 C 用 5 折平均对数损失来选（reports/r1_cv_selection.md）。选中 C = 0.1，它在 0.01 到 1 这个范围的中间。
+## 2. Model
+- Logistic regression. Three feature blocks: rating gap ÷ 100; model identity (higher-rated +1, lower-rated −1, 53 dims); the prompt vector. Sample weight = 1 / n_votes. Each context trains only on its own train votes, with ratings from its own BT fit.
+- Regularization C is chosen by mean log loss over the 5 folds (reports/r1_cv_selection.md). C = 0.1 was chosen, in the middle of the 0.01 to 1 range.
 
-| 版本 | 对数损失 | AUC |
+| Version | Log loss | AUC |
 |---|---|---|
-| 只用评分差 | 0.6796 | 0.584 |
-| + 模型身份 | 0.6794 | 0.585 |
-| + prompt 向量（R1） | **0.6747** | **0.600** |
+| Rating gap only | 0.6796 | 0.584 |
+| + model identity | 0.6794 | 0.585 |
+| + prompt vector (R1) | **0.6747** | **0.600** |
 
-- **拆提升来源：** 只加模型身份时，所有口径的 APGR 变化都在 ±0.006 以内。所以下面的提升全部来自 prompt。
-- **三分类修正：** 美元口径按「预期质量提升 ÷ 增量成本」排序。质量分的规则是赢 1、平 0.5、输 0，所以发高分方比发低分方预期多拿 P(赢) − P(输) 分。二分类 R1 输出的 p 是「高分方明确赢」的概率，平局算 0。如果直接用 2p − 1，每票会少算一个 P(平)，大约是 0.27，评分差小的票几乎都会被算成负提升。修正方法是用同样的特征训练三分类（赢 / 平 / 输，scripts/train_r1b.py），再取 P(赢) − P(输)。修正前，美元合并口径是 0.624，修正后是 0.757。评分差基线没有这个问题，因为 BT 胜率本来就把平局按半票算。
+- **Where the gain comes from:** adding model identity alone moves APGR by at most ±0.006 in every view. So the gains below come entirely from the prompt.
+- **3-class fix:** the dollar axis ranks by "expected quality gain ÷ extra cost". Quality is win 1, tie 0.5, loss 0, so routing to the higher-rated instead of the lower-rated model gains P(win) − P(loss) in expectation. The binary R1 outputs p as the probability that the higher-rated model wins outright, with ties as 0. Using 2p − 1 directly undercounts every vote by P(tie), about 0.27, and votes with a small rating gap nearly all come out as a negative gain. The fix is to train a 3-class model (win / tie / loss, scripts/train_r1b.py) on the same features and take P(win) − P(loss). Before the fix the pooled dollar view was 0.624; after it, 0.757. The rating-gap baseline does not have this problem, because BT win rates already count ties as half votes.
 
-## 3. 结果（三分类 R1，95% 区间按 prompt 组 bootstrap 1000 次）
+## 3. Results (3-class R1, 95% intervals from 1000 bootstrap resamples by prompt group)
 
-**按调用比例（相对评分差基线）**
+**Call-share axis (against the rating-gap baseline)**
 
-| 口径 | 评分差基线 | R1 | ΔAPGR |
+| View | Rating-gap baseline | R1 | ΔAPGR |
 |---|---|---|---|
-| ① 合并 | 0.668 | 0.683 | **+0.015** [0.011, 0.019] |
+| ① pooled | 0.668 | 0.683 | **+0.015** [0.011, 0.019] |
 | ① < 50 | 0.645 | 0.634 | −0.012 [−0.037, 0.017] |
 | ① 50–150 | 0.580 | 0.616 | **+0.036** [0.029, 0.043] |
 | ① > 150 | 0.530 | 0.575 | **+0.046** [0.036, 0.055] |
-| ② 强弱档 | 0.534 | 0.581 | **+0.047** [0.038, 0.056] |
+| ② strong vs weak | 0.534 | 0.581 | **+0.047** [0.038, 0.056] |
 
-CPT(50%)：强弱档里，PGR 要达到 50%，强模型的调用比例从 46% 降到 40%。
+CPT(50%): on strong vs weak, the share of strong-model calls needed for 50% PGR drops from 46% to 40%.
 
-**美元口径（相对正式基线「评分差 ÷ 价格差」，评分差基线仍列在详表里作对照）**
+**Dollar axis (against the formal baseline "rating gap ÷ price gap"; the rating-gap baseline is still listed in the detailed tables as a control)**
 
-| 口径 | 正式基线 | R1 | ΔAPGR$ |
+| View | Formal baseline | R1 | ΔAPGR$ |
 |---|---|---|---|
-| ① 合并 | 0.768 | 0.757 | −0.011 [−0.016, −0.004] |
+| ① pooled | 0.768 | 0.757 | −0.011 [−0.016, −0.004] |
 | ① < 50 | 0.814 | 0.757 | −0.057 [−0.094, −0.022] |
 | ① 50–150 | 0.753 | 0.750 | −0.003 [−0.010, 0.001] |
 | ① > 150 | 0.613 | 0.619 | +0.006 [0.000, 0.013] |
-| ② 美元主案例 | 0.623 | 0.631 | **+0.008** [0.001, 0.014] |
-| ② 配对内（按票数加权） | 0.494 | 0.528 | **+0.034** [0.011, 0.059] |
-| ② 配对内（合并版） | 0.493 | 0.522 | **+0.030** [0.007, 0.047] |
+| ② main dollar case | 0.623 | 0.631 | **+0.008** [0.001, 0.014] |
+| ② within pair (vote-weighted) | 0.494 | 0.528 | **+0.034** [0.011, 0.059] |
+| ② within pair (pooled) | 0.493 | 0.522 | **+0.030** [0.007, 0.047] |
 
-## 4. 怎么读这些数
-1. **prompt 信号是真的，但不大。** 在价格固定的同一对模型里，R1 比随机排序多拿约 0.03 到 0.05 的 APGR。在强弱档里，CPT(50%) 节省了 6 个百分点的强模型调用。
-2. **美元口径里，价格差主导排序。** 不同模型对之间价格能差到 1.9 到 33 倍，正式基线光靠「先发便宜又明显更好的那几对」就已经拿到大部分收益。R1 的 prompt 信号叠加上去后，在主案例里只多出 0.008。
-3. **评分差小于 50 的那一桶里，R1 反而更差。** 这类票的预期提升接近 0，R1 的预测噪声又被很小的价格差放大，排序被带偏了。改进方向有两个：（a）让 R1 只预测「相对评分差基线的偏移」，并加强收缩；（b）矩阵分解（MF，R2），让 prompt 和具体模型对产生交互，而不是对所有模型对只加一个统一的「难度」偏移。
-4. **对照成功标准：** 按调用比例的口径过了「值得做」这条线；美元主案例只过了「最低要求」（区间不含 0），没达到 +0.03。
+## 4. How to read these numbers
+1. **The prompt signal is real but small.** Within one model pair at a fixed price, R1 gets about 0.03 to 0.05 more APGR than random ranking. On strong vs weak, CPT(50%) saves 6 percentage points of strong-model calls.
+2. **On the dollar axis the price gap dominates the ranking.** Prices differ by 1.9 to 33 times across model pairs, and the formal baseline already captures most of the gain just by "sending first to the few pairs that are cheap and clearly better". R1's prompt signal adds only 0.008 on top in the main case.
+3. **In the rating gap < 50 bucket, R1 is actually worse.** The expected gain for these votes is close to 0, and R1's prediction noise is amplified by the tiny price gaps, which skews the ranking. Two ways to improve: (a) have R1 predict only an "offset from the rating-gap baseline", with stronger shrinkage; (b) matrix factorization (MF, R2), letting the prompt interact with specific model pairs instead of adding one shared "difficulty" offset to all pairs.
+4. **Against the success criteria:** the call-share view clears the "worth doing" bar; the main dollar case clears only the "minimum requirement" (interval excludes 0), not +0.03.
 
-## 文件
-scripts/train_r1.py（二分类，以及选 C）、scripts/train_r1b.py（三分类）；preds/r1_*.parquet、preds/r1b_*.parquet；详表在 reports/eval_R1_*.md / .json / .png。
+## Files
+scripts/train_r1.py (binary, and choice of C), scripts/train_r1b.py (3-class); preds/r1_*.parquet, preds/r1b_*.parquet; detailed tables in reports/eval_R1_*.md / .json / .png.

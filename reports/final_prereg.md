@@ -1,28 +1,30 @@
-# 测试集 --final 预登记（2026-11-10，在任何测试集结果产生之前写好）
+# Test set --final pre-registration (2026-11-10, written before any test-set result existed)
 
-测试集（10,135 票，口径 ② 999 票）只评估这一次。下面的设置在跑之前已经定死，跑完不再修改。如果结果不好看，也不回头调整。
+> English translation. The original was written in Chinese on 2026-11-10 and is kept unchanged in this repository's git history (commit 3c66d6c, `reports/final_prereg.md`).
 
-## 训练数据
-- 所有模型都只用 90% 开发集（context = final，role = train）训练。BT 评分也只用开发集票拟合（fold_ratings.py 里已经固定）。
-- 测试集 prompt 的向量早已算好，但从来没有参与训练或选参。
+The test set (10,135 votes, 999 of them in view ②) is evaluated this one time. The settings below were fixed before the run and are not changed afterwards. If the results look bad, nothing is tuned after the fact.
 
-## 路由器与设置（全部来自开发集 5 折的嵌套选择）
-| 名称 | 设置 | 来源 |
+## Training data
+- Every model is trained only on the 90% dev set (context = final, role = train). BT ratings are also fitted on dev votes only (already fixed in fold_ratings.py).
+- Vectors for the test-set prompts were computed long ago but never took part in training or hyperparameter choice.
+
+## Routers and settings (all from nested selection over the dev set's 5 folds)
+| Name | Settings | Source |
 |---|---|---|
-| 正式基线 | 评分差 10 桶的经验 赢/平/输 比例，再除以价格差（下限 $0.25/千次） | tie_baselines.py --final |
-| 对照基线 | 三分类逻辑回归版、BT 半票版、只按评分差（不看价格）、随机 | 同上 |
-| **R2（主）** | 矩阵分解，d = 128，Adam 学习率 1e-3，λ = 1e-5，批大小 1024。轮数由开发集 train 内部按 prompt 组哈希切出的 20% 早停决定（耐心 3 轮，最多 30 轮），然后在整份开发集 train 上用这个轮数重训 | r2_sweep.md：5 折里有 4 折选中这个组合 |
-| R1（对照） | 三分类逻辑回归，特征 = prompt 向量 + 评分差 + 模型身份，C = 0.1，权重 1/n_votes | r1_c_selection.md：5 折都选中 C = 0.1 |
+| Formal baseline | Empirical win / tie / loss shares in 10 rating-gap buckets, divided by the price gap (floor $0.25 per 1,000) | tie_baselines.py --final |
+| Control baselines | 3-class logistic version, BT half-vote version, rating gap only (ignores price), random | same |
+| **R2 (main)** | Matrix factorization, d = 128, Adam learning rate 1e-3, λ = 1e-5, batch size 1024. Epochs set by early stopping on a 20% split of the dev-set train votes by prompt-group hash (patience 3 epochs, at most 30), then retrained on all dev-set train votes for that many epochs | r2_sweep.md: this combination was chosen in 4 of 5 folds |
+| R1 (control) | 3-class logistic regression, features = prompt vector + rating gap + model identity, C = 0.1, weight 1/n_votes | r1_c_selection.md: C = 0.1 chosen in all 5 folds |
 
-## 指标（和开发集报告同口径，bootstrap 1000 次，按 prompt 组重采样）
-- **调用比例口径**（evaluate.py，用 P(赢) 排序）：① 合并、① 三个分桶、② 强弱档的 APGR / CPT。ΔAPGR 都是和「评分差基线」比。
-- **美元口径**（evaluate_cost.py，用 (P(赢) − P(输)) ÷ max(典型成本差, $0.25/千次) 排序）：① 合并、分桶、② 美元主案例的 APGR$ / CPT$，ΔAPGR$ 和正式基线比；主案例的配对内 APGR$（只用票数 ≥ 30 的模型对，测试集里这样的对会比开发集少）；主案例 CPT$(50%) 换算成每千次请求的美元。
-- 上限和下限并报：强弱档 Δ 是上限，配对内相对 0.5 的差是下限。
+## Metrics (same definitions as the dev-set reports, 1000 bootstrap resamples by prompt group)
+- **Call-share axis** (evaluate.py, ranked by P(win)): APGR / CPT for ① pooled, the three ① buckets, and ② strong vs weak. ΔAPGR is always against the rating-gap baseline.
+- **Dollar axis** (evaluate_cost.py, ranked by (P(win) − P(loss)) ÷ max(typical cost gap, $0.25 per 1,000)): APGR$ / CPT$ for ① pooled, the buckets and the ② main dollar case, with ΔAPGR$ against the formal baseline; within-pair APGR$ for the main case (only model pairs with ≥ 30 votes; the test set will have fewer such pairs than the dev set); main-case CPT$(50%) converted to dollars per 1,000 requests.
+- Upper and lower bounds are reported together: the strong-vs-weak Δ is the upper bound, the within-pair difference from 0.5 is the lower bound.
 
-## 事先说明的预期
-- 测试集口径 ② 只有 999 票，约为开发集 8,333 票的 1/8，所以区间宽度大约是开发集的 3 倍。在开发集上 +0.054 [0.043, 0.068] 这样的结果，在测试集上区间宽度可能有 ±0.03，下沿有可能碰到 0。
-- 判断标准沿用阶段 2 的成功标准：口径 ② 和 > 150 分桶的 ΔAPGR 区间不含 0。达不到时如实报告，不换指标。
+## Expectations stated in advance
+- View ② on the test set has only 999 votes, about 1/8 of the dev set's 8,333, so intervals will be roughly 3 times as wide. A dev result like +0.054 [0.043, 0.068] may have a test interval of ±0.03, and its lower end could touch 0.
+- The success criterion is stage 2's: the ΔAPGR intervals for view ② and the > 150 bucket exclude 0. If that is not met, it is reported as is, without switching metrics.
 
-## 不包括
-- R3：要等打标完成后另行预登记，测试集只评一次。
-- 打乱向量对照：开发集上已经做过，测试集不重复。
+## Not included
+- R3: to be pre-registered separately once labeling is done; the test set is evaluated once.
+- The shuffled-vector control: already done on the dev set, not repeated on the test set.

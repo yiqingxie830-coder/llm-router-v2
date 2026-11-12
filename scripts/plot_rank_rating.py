@@ -1,9 +1,10 @@
-"""plot_rank_rating.py — 名次–分数图 (用于确定强弱档固定名单)
+"""plot_rank_rating.py — rank–rating plot (used to fix the strong / weak tier lists)
 
-只用 final 情境 (= 90% 开发集) 的 BT 评分排名; 横线是 6 个情境中的最低~最高分。
-只画开发集出场 ≥ 300 × 开发集占比 次的模型 (评分区间太宽的不参与定档)。
-用法: python -I plot_rank_rating.py <v2 根目录>   (需先跑 fold_ratings.py)
-输出: reports/step4_rank_rating.png / .csv
+Ranks by the BT rating of the final context only (= the 90% dev set); the horizontal bars span the lowest to
+highest rating across the 6 contexts. Only models with ≥ 300 × (dev share) dev appearances are drawn
+(models whose rating range is too wide do not take part in tiering).
+Usage: python -I plot_rank_rating.py <repo root>   (run fold_ratings.py first)
+Writes: reports/step4_rank_rating.png / .csv
 """
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ import matplotlib
 import pandas as pd
 
 matplotlib.use("Agg")
-matplotlib.rcParams["font.sans-serif"] = ["WenQuanYi Zen Hei"]
+matplotlib.rcParams["font.family"] = ["DejaVu Sans"]
 import matplotlib.pyplot as plt  # noqa: E402
 
 root = Path(sys.argv[1])
@@ -39,14 +40,14 @@ for k in [1, 2, 10, 40, 45]:
     yy = -(k + 0.5)
     main = k in (10, 40)
     ax.axhline(yy, color=ink if main else grid, lw=1.2 if main else .8, ls="--")
-    ax.text(1142, yy, f"断层 {f.loc[k - 1, 'gap_below']:.1f} 分", va="center", fontsize=8, color=ink if main else muted)
-ax.text(1000, -5.5, "强档 (前 10)", color="#2a78d6", fontsize=10)
-ax.text(1050, -46, "弱档 (后 11)", color="#eb6834", fontsize=10)
-ax.text(1060, -25, "中间带 (不用)", color=muted, fontsize=10)
+    ax.text(1142, yy - 0.45, f"gap {f.loc[k - 1, 'gap_below']:.1f} pts", va="top", fontsize=8, color=ink if main else muted)
+ax.text(1000, -5.5, "Strong tier (top 10)", color="#2a78d6", fontsize=10)
+ax.text(1050, -46, "Weak tier (bottom 11)", color="#eb6834", fontsize=10)
+ax.text(1060, -25, "Middle (unused)", color=muted, fontsize=10)
 ax.set_xlim(875, 1175)
 ax.set_ylim(-52, 0)
-ax.set_xlabel("Bradley-Terry 评分 (只用 90% 开发集拟合); 横线 = 6 个情境中的最低~最高分", color=muted)
-ax.set_title(f"名次–分数图: {len(f)} 个模型", loc="left", color=ink, fontsize=12)
+ax.set_xlabel("Bradley-Terry rating (90% dev set)\nbar = lowest to highest rating across the 6 contexts", color=muted)
+ax.set_title(f"Rank vs rating: {len(f)} models", loc="left", color=ink, fontsize=12)
 ax.grid(axis="x", color=grid, lw=.6)
 for s in ax.spines.values():
     s.set_color(grid)

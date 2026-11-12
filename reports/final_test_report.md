@@ -1,53 +1,53 @@
-# 测试集结果（--final，按预登记只跑一次）
+# Test-set results (--final, run once as pre-registered)
 
-**一句话结论：** R2 在测试集上守住了开发集的结论。按调用比例算，强弱档 APGR 从基线 0.529 提到 0.612（+0.083 [0.037, 0.128]），评分差 > 150 分桶 +0.074 [0.031, 0.125]，两项预登记的成功标准都达到了。R1 在强弱档也显著（+0.046 [0.009, 0.087]），但 > 150 分桶的区间碰到了 0。美元主案例上，两个路由器和正式基线的差别仍然不显著，和开发集一致。
+**In one sentence:** R2 held up the dev-set conclusion on the test set. On the call-share axis, strong-vs-weak APGR rises from the baseline's 0.529 to 0.612 (+0.083 [0.037, 0.128]) and the rating gap > 150 bucket gains +0.074 [0.031, 0.125], so both pre-registered success criteria are met. R1 is also significant on strong vs weak (+0.046 [0.009, 0.087]), but its interval in the > 150 bucket touches 0. On the main dollar case, neither router differs significantly from the formal baseline, as on the dev set.
 
-设置见 [final_prereg.md](final_prereg.md)。所有模型只用 90% 开发集训练。R2 由开发集内部早停选出 13 轮，用时 39 秒。测试集 10,135 票，其中口径 ② 999 票、美元主案例 840 票。区间是 bootstrap 1000 次、按 prompt 组重采样得到的 95% 区间。
+Settings are in [final_prereg.md](final_prereg.md). All models were trained on the 90% dev set only. Early stopping inside the dev set chose 13 epochs for R2, which took 39 seconds. The test set has 10,135 votes: 999 in view ② and 840 in the main dollar case. Intervals are 95% intervals from 1000 bootstrap resamples by prompt group.
 
-## 1. 按调用比例（和评分差基线比，ΔAPGR）
+## 1. Call-share axis (against the rating-gap baseline, ΔAPGR)
 
-| 口径 | 测试集票数 | 评分差基线 | R2（主） | R2 开发集 Δ | R1（对照） | R1 开发集 Δ |
+| View | Test votes | Rating-gap baseline | R2 (main) | R2 dev Δ | R1 (control) | R1 dev Δ |
 |---|---|---|---|---|---|---|
-| ① 合并 | 10,135 | 0.679 | 0.735（**+0.056** [0.037, 0.076]） | +0.043 | 0.695（+0.016 [0.002, 0.031]） | +0.015 |
-| ① < 50 | 4,069 | 0.760 | 0.890（**+0.130** [0.012, 0.292]） | +0.133 | 0.678（−0.082，不显著） | −0.012 |
-| ① 50–150 | 5,038 | 0.569 | 0.644（**+0.075** [0.049, 0.103]） | +0.059 | 0.617（+0.048 [0.028, 0.072]） | +0.036 |
-| ① > 150 | 1,028 | 0.537 | 0.611（**+0.074** [0.031, 0.125]） | +0.054 | 0.569（+0.032 [−0.004, 0.073]） | +0.046 |
-| ② 强弱档 | 999 | 0.529 | 0.612（**+0.083** [0.037, 0.128]） | +0.054 | 0.575（+0.046 [0.009, 0.087]） | +0.047 |
+| ① pooled | 10,135 | 0.679 | 0.735 (**+0.056** [0.037, 0.076]) | +0.043 | 0.695 (+0.016 [0.002, 0.031]) | +0.015 |
+| ① < 50 | 4,069 | 0.760 | 0.890 (**+0.130** [0.012, 0.292]) | +0.133 | 0.678 (−0.082, not significant) | −0.012 |
+| ① 50–150 | 5,038 | 0.569 | 0.644 (**+0.075** [0.049, 0.103]) | +0.059 | 0.617 (+0.048 [0.028, 0.072]) | +0.036 |
+| ① > 150 | 1,028 | 0.537 | 0.611 (**+0.074** [0.031, 0.125]) | +0.054 | 0.569 (+0.032 [−0.004, 0.073]) | +0.046 |
+| ② strong vs weak | 999 | 0.529 | 0.612 (**+0.083** [0.037, 0.128]) | +0.054 | 0.575 (+0.046 [0.009, 0.087]) | +0.047 |
 
-- **预登记的成功标准是口径 ② 和 > 150 分桶的区间都不含 0。** R2 两项都达到；R1 只达到口径 ②，> 150 分桶的区间下沿是 −0.004。
-- 除 < 50 分桶外，R2 的测试集点估计比开发集高 0.01 到 0.03，但开发集的数字都落在测试集区间之内。测试集只有开发集的约 1/9，所以区间要宽得多。这不能解读为「测试集上更好」，只能说开发集的结论没有被推翻。
-- R2 在 < 50 分桶（实力接近的配对）的大幅提升（+0.130）在测试集上重现了，但区间很宽，从 0.012 到 0.292。
+- **The pre-registered success criterion is that the intervals for view ② and the > 150 bucket both exclude 0.** R2 meets both; R1 meets only view ②, with a lower end of −0.004 in the > 150 bucket.
+- Except in the < 50 bucket, R2's test point estimates are 0.01 to 0.03 above the dev set, but every dev number falls inside the test interval. The test set is only about 1/9 the size of the dev set, so its intervals are much wider. This cannot be read as "better on the test set"; it only says the dev conclusion was not overturned.
+- R2's large gain in the < 50 bucket (closely matched pairs, +0.130) reappears on the test set, but its interval is wide, from 0.012 to 0.292.
 
-## 2. 美元口径（和正式基线「评分差 ÷ 价格差」比，ΔAPGR$）
+## 2. Dollar axis (against the formal baseline "rating gap ÷ price gap", ΔAPGR$)
 
-| 口径 | 正式基线 | R2 | R2 开发集 Δ | R1 | R1 开发集 Δ |
+| View | Formal baseline | R2 | R2 dev Δ | R1 | R1 dev Δ |
 |---|---|---|---|---|---|
-| ① 合并 | 0.780 | 0.779（−0.001 [−0.026, 0.024]） | +0.006 | 0.774（−0.006 [−0.023, 0.013]） | −0.011 |
-| ① < 50 | 0.846 | 0.899（+0.053 [−0.061, 0.259]） | +0.046 | 0.753（−0.093，不显著） | −0.062 |
-| ① 50–150 | 0.778 | 0.754（−0.025 [−0.048, 0.014]） | −0.002 | 0.777（−0.001） | −0.003 |
-| ① > 150 | 0.631 | 0.633（+0.002） | +0.003 | 0.643（+0.012） | +0.006 |
-| ② 美元主案例（840 票） | 0.610 | 0.624（+0.014 [−0.021, 0.068]） | +0.008 | 0.630（+0.021 [−0.007, 0.051]） | +0.011 |
+| ① pooled | 0.780 | 0.779 (−0.001 [−0.026, 0.024]) | +0.006 | 0.774 (−0.006 [−0.023, 0.013]) | −0.011 |
+| ① < 50 | 0.846 | 0.899 (+0.053 [−0.061, 0.259]) | +0.046 | 0.753 (−0.093, not significant) | −0.062 |
+| ① 50–150 | 0.778 | 0.754 (−0.025 [−0.048, 0.014]) | −0.002 | 0.777 (−0.001) | −0.003 |
+| ① > 150 | 0.631 | 0.633 (+0.002) | +0.003 | 0.643 (+0.012) | +0.006 |
+| ② main dollar case (840 votes) | 0.610 | 0.624 (+0.014 [−0.021, 0.068]) | +0.008 | 0.630 (+0.021 [−0.007, 0.051]) | +0.011 |
 
-- 美元口径的结论和开发集一样：价格差主导排序，读 prompt 带来的额外收益在 ±0.02 以内，区间都含 0。开发集上 R1 主案例的 +0.011 是显著的，在测试集上不显著。
-- 正式基线的三个版本（分桶、三分类逻辑回归、BT 半票）在测试集上相差不超过 0.02，结论不受基线版本影响。
+- The dollar-axis conclusion matches the dev set: the price gap dominates the ranking, the extra gain from reading the prompt is within ±0.02, and every interval contains 0. R1's +0.011 on the main case was significant on the dev set and is not significant on the test set.
+- The three versions of the formal baseline (buckets, 3-class logistic, BT half-vote) differ by no more than 0.02 on the test set, so the conclusion does not depend on the baseline version.
 
-## 3. 主案例 CPT$(50%) 换算成美元（每千次请求）
+## 3. Main-case CPT$(50%) in dollars (per 1,000 requests)
 
-测试集主案例里，全发弱档每千次 $4.04，全发强档 $16.96。
+In the test-set main case, sending everything to the weak tier costs $4.04 per 1,000 and sending everything to the strong tier $16.96.
 
-| | CPT$(50%) [95% 区间] | 每千次成本 | 比正式基线省 | 比全发强模型省 |
+| | CPT$(50%) [95% interval] | Cost per 1,000 | Saved vs formal baseline | Saved vs all-strong |
 |---|---|---|---|---|
-| 正式基线 | 0.41 [0.30, 0.48] | $9.34 | — | $7.62（45%） |
-| R2 | 0.31 [0.22, 0.40] | $8.05 | $1.29（14%） | $8.91（53%） |
-| R1 | 0.31 [0.25, 0.39] | $8.05 | $1.29（14%） | $8.91（53%） |
+| Formal baseline | 0.41 [0.30, 0.48] | $9.34 | — | $7.62 (45%) |
+| R2 | 0.31 [0.22, 0.40] | $8.05 | $1.29 (14%) | $8.91 (53%) |
+| R1 | 0.31 [0.25, 0.39] | $8.05 | $1.29 (14%) | $8.91 (53%) |
 
-扣掉推理开销（每千次约 $0.02，见 [overhead_table.md](overhead_table.md)）后，净省约 $1.27。但基线和路由器的区间有重叠，所以这个 $1.29 不能当成确定的数。开发集上同一个数是 $0.77，两者都应该一起报。
+After inference overhead (about $0.02 per 1,000, see [overhead_table.md](overhead_table.md)) the net saving is about $1.27. But the baseline's and the routers' intervals overlap, so the $1.29 cannot be treated as a firm number. The same figure on the dev set is $0.77; both should be reported together.
 
-## 4. 配对内指标（下限）在测试集上无法估计
+## 4. The within-pair metric (lower bound) cannot be estimated on the test set
 
-测试集主案例里，票数 ≥ 30 的模型对只有 3 个，合计 98 票，区间宽到 [0.3, 0.9]，没有信息量。所以产品场景的下限只能沿用开发集的数字：R1 0.528 / R2 0.522，比随机高 0.02 到 0.03。这一点在预登记里已经预先说明了（「测试集里这样的对会比开发集少」）。
+In the test-set main case only 3 model pairs have ≥ 30 votes, 98 votes in total, and the interval is as wide as [0.3, 0.9], which carries no information. The lower bound for a product scenario therefore stays at the dev-set figures: R1 0.528 / R2 0.522, 0.02 to 0.03 above random. The pre-registration said so in advance ("the test set will have fewer such pairs than the dev set").
 
-## 5. 文件
-- 预测：`preds/r2_win_final.parquet`、`preds/r2_eff_final.parquet`、`preds/r1b_win_final.parquet`、`preds/r1b_eff_final.parquet`、`preds/base_tie_*_final.parquet`
-- 详表：`reports/eval_R2_MF_win_final.md`（调用比例）、`reports/eval_R2_MF_final.md`（美元）、`reports/eval_R1_三分类_win_final.md`、`reports/eval_R1_三分类_final.md`
-- R2 训练记录：`reports/r2_final_train.json`
+## 5. Files
+- Predictions: `preds/r2_win_final.parquet`, `preds/r2_eff_final.parquet`, `preds/r1b_win_final.parquet`, `preds/r1b_eff_final.parquet`, `preds/base_tie_*_final.parquet`
+- Detailed tables: `reports/eval_R2_MF_win_final.md` (call share), `reports/eval_R2_MF_final.md` (dollars), `reports/eval_R1_3class_win_final.md`, `reports/eval_R1_3class_final.md`
+- R2 training record: `reports/r2_final_train.json`

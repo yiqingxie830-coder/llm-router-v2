@@ -1,21 +1,22 @@
-"""train_r2_mf.py — 阶段 2 路由器 R2: 矩阵分解 (MF), 参考 RouteLLM 的 MF 路由器
+"""train_r2_mf.py — Stage 2 router R2: matrix factorization (MF), after RouteLLM's MF router
 
-和 R1 的区别
-------------
-R1 是线性的: prompt 对所有模型对加同一个"难度偏移"。MF 让 prompt 和具体模型交互:
-  z      = W · e + b                     (prompt 向量 1024 维 → k 维)
-  f(m,q) = w2 · (v_m ⊙ z) + u_m           (模型 m 在这个 prompt 上的"适合度")
-  s      = f(高分方) − f(低分方) + a · 评分差/100
-输出用有序逻辑 (输 < 平 < 赢, 两个切点 c1 < c2):
-  P(输) = σ(c1 − s),  P(输或平) = σ(c2 − s),  P(赢) = 1 − σ(c2 − s)
-所以 P(赢) − P(输) 直接可得, 和三分类 R1、带平局基线同口径。
+How it differs from R1
+----------------------
+R1 is linear: a prompt adds the same "difficulty offset" to every model pair. MF lets the prompt interact with each model:
+  z      = W · e + b                     (prompt vector, 1024 dims -> k dims)
+  f(m,q) = w2 · (v_m ⊙ z) + u_m           (how well model m suits this prompt)
+  s      = f(higher-rated) − f(lower-rated) + a · gap/100
+Output is ordinal logistic (loss < tie < win, two cut points c1 < c2):
+  P(loss) = σ(c1 − s),  P(loss or tie) = σ(c2 − s),  P(win) = 1 − σ(c2 − s)
+so P(win) − P(loss) comes out directly, on the same target as the 3-class R1 and the tie-aware baseline.
 
-训练: 加权负对数似然 (权重 1/n_votes) + L2 (λ), Adam, 批大小 1024。
-选超参 (只在训练折内): 每个外层折的 train 票按 prompt 组切 80/20, 在 80% 上训练, 20% 上做早停并选 λ;
-再用选中的 λ 和轮数在整份 train 上重训, 预测该折 eval 票。eval 票、测试集都不参与。
+Training: weighted negative log likelihood (weight 1/n_votes) + L2 (λ), Adam, batch size 1024.
+Hyperparameters (inside training folds only): each outer fold's train votes are split 80/20 by prompt group; train on
+80%, early-stop and choose λ on 20%; then retrain on the whole train part with the chosen λ and epoch count and predict
+that fold's eval votes. Neither eval votes nor the test set take part.
 
-用法: python -I train_r2_mf.py <v2 根目录> [--final] [--shuffle]
-产出: preds/r2_win.parquet (p = P(赢)), preds/r2_eff.parquet (p = (1 + P赢 − P输)/2), reports/r2_selection.md
+Usage: python -I train_r2_mf.py <repo root> [--final] [--shuffle]
+Writes: preds/r2_win.parquet (p = P(win)), preds/r2_eff.parquet (p = (1 + P(win) − P(loss))/2), reports/r2_selection.md
 """
 import hashlib
 import sys
@@ -31,7 +32,7 @@ import pandas as pd
 root = Path(sys.argv[1])
 use_final = "--final" in sys.argv
 K, BATCH, MAX_EP, PATIENCE = 64, 1024, 30, 3
-LAMBDAS = [0.0, 1e-6, 1e-5, 1e-4]  # 第一轮 [1e-5, 1e-4, 1e-3] 选中网格边缘 1e-5, 见 r2_selection_round1.md
+LAMBDAS = [0.0, 1e-6, 1e-5, 1e-4]  # round 1 [1e-5, 1e-4, 1e-3] picked the grid edge 1e-5, see r2_selection_round1.md
 SEED = 2026
 
 fl = pd.read_parquet(root / "data/fold_labels.parquet",
@@ -39,7 +40,7 @@ fl = pd.read_parquet(root / "data/fold_labels.parquet",
                               "y_hi_route", "is_tie", "n_votes"])
 fl["cls"] = np.where(fl.y_hi_route == 1, 2, np.where(fl.is_tie, 1, 0)).astype(np.int32)
 emb = np.load(root / "data/prompt_emb_e5large.npy").astype(np.float32)
-SHUFFLE = "--shuffle" in sys.argv   # 对照: 把 prompt 向量在 prompt 之间随机打乱, 检查提升是否真来自 prompt 内容
+SHUFFLE = "--shuffle" in sys.argv   # control: shuffle prompt vectors across prompts, to check the gain really comes from prompt content
 if SHUFFLE:
     emb = emb[np.random.default_rng(7).permutation(len(emb))]
 gpos = pd.Series(np.arange(len(emb)), index=pd.read_parquet(root / "data/prompt_emb_index.parquet").group_id)
@@ -98,7 +99,7 @@ def make_step(lam, opt):
 
 
 def train(data, lam, epochs=None, val=None):
-    """epochs=None 时用 val 早停, 返回 (参数, 最佳轮数, 最佳验证损失)。"""
+    """With epochs=None, early-stop on val and return (params, best epoch, best validation loss)."""
     opt = optax.adam(1e-3)
     p = init(jax.random.PRNGKey(SEED))
     s = opt.init(p)
@@ -122,9 +123,9 @@ def train(data, lam, epochs=None, val=None):
     return (best_p, best_ep, best) if val is not None else (p, epochs, None)
 
 
-lines = ["# R2 (MF) 超参选择 (每个外层折只用自己的 train 票; 按 prompt 组切 80/20 做内层验证)", "",
-         f"k = {K}, 批大小 {BATCH}, Adam 1e-3, 早停耐心 {PATIENCE} 轮, λ ∈ {LAMBDAS}", "",
-         "| 情境 | λ | 内层验证对数损失 | 早停轮数 |", "|---|---|---|---|"]
+lines = ["# R2 (MF) hyperparameter choice (each outer fold uses only its own train votes; 80/20 split by prompt group for inner validation)", "",
+         f"k = {K}, batch size {BATCH}, Adam 1e-3, early-stopping patience {PATIENCE} epochs, λ ∈ {LAMBDAS}", "",
+         "| Context | λ | Inner validation log loss | Early-stop epoch |", "|---|---|---|---|"]
 ctxs = ["final"] if use_final else [f"cv{k}" for k in range(5)]
 win, eff = [], []
 for ctx in ctxs:
@@ -145,7 +146,7 @@ for ctx in ctxs:
     pr = np.asarray(probs(p, gi, hi, lo, gap))
     win.append(pd.DataFrame({"context": ctx, "id": ev.id.values, "p": pr[:, 2]}))
     eff.append(pd.DataFrame({"context": ctx, "id": ev.id.values, "p": (1 + pr[:, 2] - pr[:, 0]) / 2}))
-    lines.append(f"| {ctx} 选中 | **{lam}** | | {res[lam][1]} |")
+    lines.append(f"| {ctx} chosen | **{lam}** | | {res[lam][1]} |")
 sfx = ("_final" if use_final else "") + ("_shuffled" if SHUFFLE else "")
 pd.concat(win).to_parquet(root / f"preds/r2_win{sfx}.parquet", index=False)
 pd.concat(eff).to_parquet(root / f"preds/r2_eff{sfx}.parquet", index=False)

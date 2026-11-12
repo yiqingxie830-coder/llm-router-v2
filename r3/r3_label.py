@@ -1,20 +1,20 @@
-"""r3_label.py — R3 语义标签: 用 Claude Haiku 5.5 给口径 ② 的 prompt 打 7 个字段 (打标 prompt 由 Yiqing 2026-11-10 定)
+"""r3_label.py — R3 semantic labels: Claude Haiku 5.5 tags each view-② prompt with 7 fields (labeling prompt fixed 2026-11-10)
 
-在你自己的电脑上跑 (需要 API key)。只依赖 anthropic SDK:
+Run on your own machine (needs an API key). Only depends on the anthropic SDK:
     pip install -U anthropic
-    python r3_label.py pilot --env "<module 4 目录>/.env"      # 试打 50 条, 两种设置各 50 次, 共 100 次调用, 预计 < $0.05
-    python r3_label.py count --env ...                          # (可选) 用 count_tokens 数全部 9,247 条的准确输入 token, 不收费
-    python r3_label.py submit --env ... [--arm B_no_think]      # 全量 9,247 条提交到 Batch API (五折), 记下 batch id
-    python r3_label.py collect --env ...                        # 等 batch 跑完 (通常 < 1 小时), 取回结果写 r3_labels.jsonl
+    python r3_label.py pilot --env "<path>/.env"      # pilot on 50 prompts, 50 calls per setting, 100 calls in total, expected < $0.05
+    python r3_label.py count --env ...                # (optional) count exact input tokens for all 9,247 prompts with count_tokens, free
+    python r3_label.py submit --env ... [--arm B_no_think]   # submit all 9,247 prompts to the Batch API (half price), note the batch id
+    python r3_label.py collect --env ...              # wait for the batch (usually < 1 hour), fetch results into r3_labels.jsonl
 
-key 的读取顺序: 已设置的环境变量 ANTHROPIC_API_KEY > --env 指定的 .env 文件。脚本不会打印或保存 key。
+Key lookup order: the ANTHROPIC_API_KEY environment variable if set > the .env file given by --env. The script never prints or stores the key.
 
-试打的两种设置 (都用结构化输出保证 JSON 合法):
-  A_think_low : 自适应思考 (Haiku 5.5 默认开启), effort = low
-  B_no_think  : 关闭思考 (thinking disabled, effort = low)
-产出: pilot_results.jsonl (每次调用的标签、token、耗时), pilot_summary.md (费用外推、两种设置的一致率、延迟)
-全量: submit 提交 Batch (五折, 默认用关思考 B 设置), collect 取回 r3_labels.jsonl + r3_labels_summary.txt, 两个文件传回 v2/r3/。
-collect 可以中断后重跑: batch id 存在 batch_id.json 里, 结果保留 29 天。
+The two pilot settings (both use structured outputs so the JSON is always valid):
+  A_think_low : adaptive thinking (on by default for Haiku 5.5), effort = low
+  B_no_think  : thinking disabled, effort = low
+Writes: pilot_results.jsonl (labels, tokens and time per call), pilot_summary.md (cost extrapolation, agreement between the two settings, latency)
+Full run: submit sends the Batch (half price, setting B without thinking by default); collect fetches r3_labels.jsonl + r3_labels_summary.txt into r3/.
+collect can be interrupted and rerun: the batch id is kept in batch_id.json and results are retained for 29 days.
 """
 import argparse
 import json
@@ -29,7 +29,7 @@ import anthropic
 
 HERE = Path(__file__).resolve().parent
 MODEL = "claude-haiku-5-5"
-PRICE_IN, PRICE_OUT = 0.10 / 1e6, 0.50 / 1e6       # 美元 / token, Haiku 5.5, prompt ≤ 100K token
+PRICE_IN, PRICE_OUT = 0.10 / 1e6, 0.50 / 1e6       # USD per token, Haiku 5.5, prompt ≤ 100K tokens
 N_ALL = 9247
 
 SYSTEM = """You label a single user message sent to a chatbot. Judge the task itself from the message alone.
@@ -97,7 +97,7 @@ ARMS = {
 
 
 def user_content(prompt):
-    # 消息原文整段放进标签里, 不截断
+    # the whole raw message goes inside the tag, no truncation
     return f"<message>\n{prompt}\n</message>"
 
 
@@ -112,7 +112,7 @@ def load_key(env_path):
             if line.startswith("ANTHROPIC_API_KEY="):
                 os.environ["ANTHROPIC_API_KEY"] = line.split("=", 1)[1].strip().strip('"').strip("'")
                 return
-    sys.exit("没找到 ANTHROPIC_API_KEY: 请设环境变量, 或用 --env 指向含这一行的 .env 文件")
+    sys.exit("ANTHROPIC_API_KEY not found: set the environment variable, or point --env at a .env file containing that line")
 
 
 def read_jsonl(p):
@@ -167,10 +167,10 @@ def pct(xs, q):
 
 
 def summarize(res, rows):
-    L = ["# R3 试打 50 条: 费用与一致性", "",
-         f"模型 {MODEL}; 单价 输入 ${PRICE_IN * 1e6:.2f} / 输出 ${PRICE_OUT * 1e6:.2f} 每百万 token; 结构化输出 (JSON schema)。",
-         "输出 token 含思考 token (思考按输出计费)。全量外推 = 每条平均费用 × 9,247; 输入长度按 50 条的 字符→token 线性关系校正到全量平均长度。", "",
-         "| 设置 | 成功 | 失败/拒答 | 平均输入 token | 平均输出 token (P90) | 每条费用 | 全量 9,247 条 (标准) | 全量 (Batch 五折) | 延迟 P50 / P90 (秒) |",
+    L = ["# R3 pilot on 50 prompts: cost and agreement", "",
+         f"Model {MODEL}; price input ${PRICE_IN * 1e6:.2f} / output ${PRICE_OUT * 1e6:.2f} per million tokens; structured outputs (JSON schema).",
+         "Output tokens include thinking tokens (thinking is billed as output). Full-run extrapolation = mean cost per prompt × 9,247; input length is adjusted to the full-set mean length with the chars→tokens linear fit from the 50 prompts.", "",
+         "| Setting | OK | Failed/refused | Mean input tokens | Mean output tokens (P90) | Cost per prompt | All 9,247 (standard) | All (Batch, half price) | Latency P50 / P90 (s) |",
          "|---|---|---|---|---|---|---|---|---|"]
     all_chars = None
     p_all = HERE / "r3_prompts.jsonl"
@@ -187,7 +187,7 @@ def summarize(res, rows):
         ins = [r["input_tokens"] for r in ok]
         outs = [r["output_tokens"] for r in ok]
         mean_in = statistics.mean(ins)
-        if all_chars is not None and len(ok) > 2:   # 输入 token ≈ a + b × 字符数, 外推到全量平均字符数
+        if all_chars is not None and len(ok) > 2:   # input tokens ≈ a + b × chars, extrapolated to the full-set mean chars
             xs = [r["prompt_chars"] for r in ok]
             mx, my = statistics.mean(xs), mean_in
             b = sum((x - mx) * (y - my) for x, y in zip(xs, ins)) / max(sum((x - mx) ** 2 for x in xs), 1)
@@ -197,18 +197,18 @@ def summarize(res, rows):
         L.append(f"| {arm} | {len(ok)} | {len(bad)} | {mean_in:.0f} | {statistics.mean(outs):.0f} ({pct(outs, .9)}) | "
                  f"${cost:.5f} | ${cost * N_ALL:.2f} | ${cost * N_ALL / 2:.2f} | {pct(secs, .5):.1f} / {pct(secs, .9):.1f} |")
     fails = [f"- {r['arm']} {r['group_id']}: {r.get('error')}" for r in res if "labels" not in r]
-    L += ["", "失败或拒答的调用:", ""] + (fails or ["- 无"])
+    L += ["", "Failed or refused calls:", ""] + (fails or ["- none"])
     a, b = by_arm.get("A_think_low", {}), by_arm.get("B_no_think", {})
     common = sorted(set(a) & set(b))
     if common:
-        L += ["", f"## 两种设置的一致率 ({len(common)} 条都成功)", "", "| 字段 | 完全一致 | 相差 ≤ 1 |", "|---|---|---|"]
+        L += ["", f"## Agreement between the two settings ({len(common)} prompts where both succeeded)", "", "| Field | Exact match | Within 1 |", "|---|---|---|"]
         for k in ["task_type"] + SCORES:
             same = sum(a[g][k] == b[g][k] for g in common) / len(common)
             near = "" if k == "task_type" else f"{sum(abs(a[g][k] - b[g][k]) <= 1 for g in common) / len(common):.0%}"
             L.append(f"| {k} | {same:.0%} | {near} |")
     text = {r["group_id"]: r for r in rows}
     if a:
-        L += ["", "## 设置 A 的前 10 条标签 (人工抽查用)", ""]
+        L += ["", "## First 10 labels from setting A (for manual spot checks)", ""]
         for g in list(a)[:10]:
             p = " ".join(text[g]["prompt"].split())[:160]
             L.append(f"- `{json.dumps(a[g], ensure_ascii=False)}`  {p}")
@@ -228,15 +228,15 @@ def count(args):
     with ThreadPoolExecutor(args.workers) as ex:
         toks = list(ex.map(one, rows))
     tot = sum(toks)
-    msg = (f"{len(rows)} 条, 输入 token 合计 {tot:,} (平均 {tot / len(rows):.0f}, 最大 {max(toks):,}); "
-           f"输入费用 标准 ${tot * PRICE_IN:.2f} / Batch ${tot * PRICE_IN / 2:.2f}")
+    msg = (f"{len(rows)} prompts, {tot:,} input tokens in total (mean {tot / len(rows):.0f}, max {max(toks):,}); "
+           f"input cost standard ${tot * PRICE_IN:.2f} / Batch ${tot * PRICE_IN / 2:.2f}")
     (HERE / "count_tokens_all.txt").write_text(msg, encoding="utf-8")
     print(msg)
 
 
 def _req(row, i, arm):
     cfg = ARMS[arm]
-    return {"custom_id": f"p{i:05d}",   # custom_id 只能用字母数字, 序号对应 r3_prompts.jsonl 的行号
+    return {"custom_id": f"p{i:05d}",   # custom_id must be alphanumeric; the number is the row in r3_prompts.jsonl
             "params": {"model": MODEL, "max_tokens": 4000, "system": SYSTEM,
                        "messages": [{"role": "user", "content": user_content(row["prompt"])}],
                        "thinking": cfg["thinking"],
@@ -250,7 +250,7 @@ def submit(args):
     b = client.messages.batches.create(requests=[_req(r, i, args.arm) for i, r in enumerate(rows)])
     (HERE / "batch_id.json").write_text(json.dumps({"batch_id": b.id, "arm": args.arm, "n": len(rows),
                                                     "created": time.strftime("%Y-%m-%d %H:%M:%S")}))
-    print("已提交", b.id, b.processing_status, "设置", args.arm)
+    print("submitted", b.id, b.processing_status, "setting", args.arm)
 
 
 def collect(args):
@@ -262,7 +262,7 @@ def collect(args):
         if b.processing_status == "ended":
             break
         c = b.request_counts
-        print(time.strftime("%H:%M:%S"), b.processing_status, f"处理中 {c.processing} 成功 {c.succeeded} 失败 {c.errored}", flush=True)
+        print(time.strftime("%H:%M:%S"), b.processing_status, f"processing {c.processing} succeeded {c.succeeded} errored {c.errored}", flush=True)
         time.sleep(60)
     out, bad, tin, tout = [], [], 0, 0
     for r in client.messages.batches.results(meta["batch_id"]):
@@ -285,7 +285,7 @@ def collect(args):
         for r in out + bad:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     cost = (tin * PRICE_IN + tout * PRICE_OUT) / 2
-    msg = (f"成功 {len(out)} / 失败 {len(bad)}; 输入 {tin:,} / 输出 {tout:,} token; Batch 价约 ${cost:.2f}")
+    msg = (f"succeeded {len(out)} / failed {len(bad)}; input {tin:,} / output {tout:,} tokens; Batch cost about ${cost:.2f}")
     (HERE / "r3_labels_summary.txt").write_text(msg, encoding="utf-8")
     print(msg)
 
@@ -294,7 +294,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["pilot", "count", "submit", "collect"])
     ap.add_argument("--arm", default="B_no_think", choices=list(ARMS))
-    ap.add_argument("--env", default=None, help="含 ANTHROPIC_API_KEY= 的 .env 文件路径")
+    ap.add_argument("--env", default=None, help="path to a .env file containing ANTHROPIC_API_KEY=")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
     load_key(args.env)

@@ -1,19 +1,22 @@
-"""r3_train.py — 方案二 (R3 语义标签) 和对照的训练, 按 reports/r3_prereg.md 执行
+"""r3_train.py — training for approach 2 (R3 semantic labels) and its controls, following reports/r3_prereg.md
 
-路由器 (都只用口径 ② 的票训练, 三分类 赢/平/输):
-  r3lr   : task_type 独热 (8) + 6 个分数独热 (6×4) + 评分差 + 模型身份 → 逻辑回归, C 网格
-  r3mf   : R2 的 MF 结构, prompt 输入换成标签特征 38 维 (32 维独热 + 6 个分数 /3 的数值版), d × λ 网格
-  r2sw   : R2-②, R2 原样 (1024 维 e5 向量), 只用 ② 的票
-  r2r3   : R2 + R3, 输入 = e5 向量 和 38 维标签特征 拼接 (1062 维), 只用 ② 的票
-选参: 每个外层折 cv k 只用自己的 train 票, 按 prompt 组哈希切 80/20 (和方案一同一个哈希), 20% 上的加权对数损失最小者入选;
-再用入选设置 (MF 还有早停轮数) 在整份 train 上重训, 预测该折 eval 票。eval 票和测试集不参与任何选择。
-方案二代表 "r3": 每折在 r3lr 和 r3mf 的入选者里取内层验证损失更低的那个。
-标签缺失 (Haiku 拒答 11 条): 用该折 train 票所在 prompt 的众数填补。
-权重: 1 / n_votes_sw (该 prompt 在 ② 里的票数; 只用 ② 训练时与方案一 "1/n_votes" 同义)。
+Routers (all trained on view-② votes only, 3-class win / tie / loss):
+  r3lr   : task_type one-hot (8) + 6 scores one-hot (6×4) + rating gap + model identity -> logistic regression, C grid
+  r3mf   : R2's MF structure with the prompt input replaced by 38 label features (32 one-hot + the 6 scores / 3 as
+           numbers), d × λ grid
+  r2sw   : R2-②, R2 unchanged (1024-dim e5 vector), view-② votes only
+  r2r3   : R2 + R3, input = e5 vector concatenated with the 38 label features (1062 dims), view-② votes only
+Selection: each outer fold cv k uses only its own train votes, split 80/20 by prompt-group hash (the same hash as
+approach 1); the setting with the lowest weighted log loss on the 20% is chosen; then retrain with that setting (and,
+for MF, its early-stopping epoch) on the whole train part and predict that fold's eval votes. Neither eval votes nor
+the test set take part in any selection.
+Approach 2's representative "r3": in each fold, whichever of the r3lr and r3mf picks has the lower inner validation loss.
+Missing labels (Haiku refused 11 prompts): filled with the mode over the fold's training prompts.
+Weight: 1 / n_votes_sw (votes for that prompt within ②; when training on ② only, the same as approach 1's "1/n_votes").
 
-用法: python -I r3_train.py <v2 根目录> <路由器> [--final]
-      python -I r3_train.py <v2 根目录> combine [--final]     (生成 r3 = 每折 r3lr / r3mf 中内层损失低者)
-产出: preds/r3/<路由器>[_final].parquet (context, id, p_win, p), preds/r3/<路由器>[_final].json (网格、内层损失、入选)
+Usage: python -I r3_train.py <repo root> <router> [--final]
+       python -I r3_train.py <repo root> combine [--final]     (builds r3 = the per-fold lower-inner-loss of r3lr / r3mf)
+Writes: preds/r3/<router>[_final].parquet (context, id, p_win, p), preds/r3/<router>[_final].json (grid, inner losses, pick)
 """
 import hashlib
 import json
@@ -42,7 +45,7 @@ GRIDS = {
 }
 import os
 BATCH, PATIENCE, LR, SEED = 1024, 3, 1e-3, 2026
-MAX_EP = int(os.environ.get("R3_MAX_EP", 30))   # 预登记沿用 R2 的 30; 敏感性检查用 R3_MAX_EP=100
+MAX_EP = int(os.environ.get("R3_MAX_EP", 30))   # preregistered: 30, as for R2; the sensitivity check uses R3_MAX_EP=100
 sfx += "" if MAX_EP == 30 else f"_ep{MAX_EP}"
 
 fl = pd.read_parquet(root / "data/fold_labels.parquet",
@@ -65,7 +68,7 @@ fl["g"] = gpos.loc[fl.group_id].values
 
 
 def label_matrix(train_gids):
-    """按训练折众数填补缺失, 返回 (独热 32 维, 数值 6 维) 两个矩阵, 行与 gids 对齐。"""
+    """Fill missing labels with the training-fold mode; return (one-hot 32 dims, numeric 6 dims, number missing), rows aligned with gids."""
     L = lab.copy()
     tr = L.loc[np.unique(train_gids)]
     n_miss = int(L.task_type.isna().sum())
@@ -82,7 +85,7 @@ def inner_split(tr):
     return tr.group_id.map(lambda g: int(hashlib.md5(f"2026{g}".encode()).hexdigest(), 16) % 5 == 0).values
 
 
-# ---------------- 逻辑回归 (R3-LR) ----------------
+# ---------------- logistic regression (R3-LR) ----------------
 def lr_design(d, OH):
     from scipy import sparse
     n = len(d)
@@ -105,7 +108,7 @@ def wnll(y, pr, w):
     return float(-(w * np.log(pr[np.arange(len(y)), y])).sum() / w.sum())
 
 
-# ---------------- MF (R2 结构, 输入矩阵可换) ----------------
+# ---------------- MF (R2 structure, swappable input matrix) ----------------
 def mf_tools(E_np, K, lam):
     import jax
     import jax.numpy as jnp

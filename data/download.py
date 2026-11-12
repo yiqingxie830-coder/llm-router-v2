@@ -1,18 +1,19 @@
-"""download.py — 下载 Arena 人类偏好数据 (v2 阶段 1, 第 0 步)
+"""download.py — download the Arena human preference data (stage 1, step 0)
 
-决策与理由
-----------
-1. 数据源: lmarena-ai/arena-human-preference-140k (2025-04 ~ 2025-07, 135,634 条纯文本对战)。
-   - 原计划的 lmsys/arena-human-preference-100k (2024 年模型) 和 55k 都比它旧。
-     Yiqing 2026-11-07 决定只用最新的 140k, 旧版不再保留。
-   - lmsys/ 组织已改名 lmarena-ai/, 旧地址会跳转或 401。
-2. 只下 data/ 下的 7 个 parquet 分片, 总共约 1.6GB。
-3. 下载物视为"不可信文件": 放进单独目录 (不和脚本混放), 下载后逐个用 HF 公布的
-   LFS sha256 校验, 保证拿到的是官方原文件, 没被截断或篡改。不一致就删掉并报错。
-4. 只用标准库 (urllib), 不引入 huggingface_hub, 依赖越少越好复现。
-5. 网络: 云端环境需放行 huggingface.co 和 us.aws.cdn.hf.co (文件本体从后者下发)。
+Decisions
+---------
+1. Source: lmarena-ai/arena-human-preference-140k (2025-04 to 2025-07, 135,634 text-only battles).
+   - The older lmsys/arena-human-preference-100k (2024 models) and 55k sets were dropped;
+     on 2026-11-07 we decided to use only the newest 140k set.
+   - The lmsys/ organization was renamed lmarena-ai/; old URLs redirect or return 401.
+2. Only the 7 parquet shards under data/ are fetched, about 1.6 GB in total.
+3. Downloads are treated as untrusted files: they go into their own directory (never next to
+   the scripts), and each one is checked against the LFS SHA-256 that Hugging Face publishes,
+   so we know it is the official file, not truncated or altered. A mismatch deletes it and fails.
+4. Standard library only (urllib), no huggingface_hub: fewer dependencies, easier to reproduce.
+5. Network: a sandboxed environment must allow huggingface.co and us.aws.cdn.hf.co (the file bytes come from the latter).
 
-用法: python -I download.py <输出目录>
+Usage: python -I download.py <output dir>
 """
 import hashlib
 import json
@@ -26,7 +27,7 @@ FILE = f"https://huggingface.co/datasets/{REPO}/resolve/main/{{path}}"
 
 
 def list_files():
-    """从 HF API 拿分片列表和每个文件的官方 sha256 (LFS oid)。"""
+    """Get the shard list and each file's official SHA-256 (LFS oid) from the HF API."""
     with urllib.request.urlopen(API, timeout=60) as r:
         return [(x["path"], x["lfs"]["oid"]) for x in json.load(r) if x["path"].endswith(".parquet")]
 
@@ -40,7 +41,7 @@ def download(path: str, sha: str, out_dir: Path) -> Path:
             h.update(chunk)
     if h.hexdigest() != sha:
         dest.unlink()
-        raise ValueError(f"sha256 不一致, 已删除 {dest}")
+        raise ValueError(f"sha256 mismatch, deleted {dest}")
     return dest
 
 
@@ -49,7 +50,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     files = list_files()
     for path, sha in files:
-        print(f"OK {download(path, sha, out_dir)} (sha256 校验通过)")
+        print(f"OK {download(path, sha, out_dir)} (sha256 verified)")
     (out_dir / "SOURCE.txt").write_text(
         f"repo={REPO}\n" + "".join(f"{p} sha256={s}\n" for p, s in files))
 

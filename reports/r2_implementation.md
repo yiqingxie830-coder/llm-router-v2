@@ -1,58 +1,58 @@
-# R2 矩阵分解（MF）路由器：实现说明
+# R2 matrix factorization (MF) router: implementation notes
 
-代码：`scripts/train_r2_mf.py`（模型与训练），`scripts/r2_sweep.py`（超参扫描、嵌套选择、导出模型向量）。扫描明细表在 `reports/r2_sweep.md`。
+Code: `scripts/train_r2_mf.py` (model and training), `scripts/r2_sweep.py` (hyperparameter sweep, nested selection, model-vector export). The full sweep table is in `reports/r2_sweep.md`.
 
-## 1. 模型结构
+## 1. Model structure
 
-对一张票（prompt q，高分方 hi，低分方 lo），计算如下：
-
-```
-z      = W · e_q + b                      e_q：prompt 向量（multilingual-e5-large，1024 维，L2 归一化）
-f(m,q) = w2 · (v_m ⊙ z) + u_m             模型 m 在这条 prompt 上的“适合度”
-s      = f(hi,q) − f(lo,q) + a · 评分差/100
-```
-
-- **投影：** 单个线性层 W（1024 × d）加偏置 b，**没有非线性**。原版 R2 用 d = 64。这次补做了 d 的扫描，5 折里有 4 折选中 d = 128（见第 4 节），导出的模型向量表用 d = 128。
-- **模型向量表：** v 的形状是 53 × d（53 个模型 = 开发集里出现过的全部模型），w2 是 d 维，所有模型共用。实际起作用的是两者的逐元素乘积 g_m = v_m ⊙ w2，所以 f(m,q) = g_m · z + u_m。这就是 RouteLLM MF 的写法。
-- **每个模型的偏置：** 有，即 u_m（标量）。因为输出只用到 f(hi) − f(lo)，所以只有 u 之间的差有意义。
-- **评分差的用法：** 只用**一个可学习的系数 a**，乘以「这一折的 BT 评分差 ÷ 100」，直接加进 s。初始值 0.5，开发集全量训练后学到 a = 0.55。评分差不进入 prompt 交互，也不分模型对。
-
-## 2. 输出：有序逻辑（ordinal），不是 softmax
-
-s 越大，高分方越可能赢。用两个阈值 c1 < c2 把 s 切成「输 < 平 < 赢」三段：
+For one vote (prompt q, higher-rated model hi, lower-rated model lo):
 
 ```
-P(输) = σ(c1 − s)
-P(平) = σ(c2 − s) − σ(c1 − s)
-P(赢) = 1 − σ(c2 − s)
+z      = W · e_q + b                      e_q: prompt vector (multilingual-e5-large, 1024 dims, L2-normalized)
+f(m,q) = w2 · (v_m ⊙ z) + u_m             how well model m suits this prompt
+s      = f(hi,q) − f(lo,q) + a · rating gap/100
 ```
 
-为保证 c1 < c2，参数化成 c2 = c1 + softplus(dc)。开发集全量训练后学到 c1 = −0.64，c2 = 0.56。路由排序用 P(赢) − P(输)，和 R1 三分类、带平局基线是同一口径。
+- **Projection:** a single linear layer W (1024 × d) with bias b, **no non-linearity**. The original R2 used d = 64. A sweep over d was added this time; 4 of 5 folds chose d = 128 (section 4), and the exported model-vector table uses d = 128.
+- **Model-vector table:** v has shape 53 × d (53 models = every model seen in the dev set), and w2 has d dims, shared by all models. What actually matters is their element-wise product g_m = v_m ⊙ w2, so f(m,q) = g_m · z + u_m. This is how RouteLLM's MF is written.
+- **Per-model bias:** yes, u_m (a scalar). The output only uses f(hi) − f(lo), so only differences between u values matter.
+- **How the rating gap is used:** through **one learnable coefficient a**, multiplied by "this fold's BT rating gap ÷ 100" and added directly to s. Initial value 0.5; trained on the full dev set it learns a = 0.55. The rating gap does not interact with the prompt and is not split by model pair.
 
-## 3. 训练
+## 2. Output: ordinal logistic, not softmax
 
-| 项 | 设置 |
+The larger s, the more likely the higher-rated model wins. Two thresholds c1 < c2 cut s into "loss < tie < win":
+
+```
+P(loss) = σ(c1 − s)
+P(tie)  = σ(c2 − s) − σ(c1 − s)
+P(win)  = 1 − σ(c2 − s)
+```
+
+To keep c1 < c2 it is parameterized as c2 = c1 + softplus(dc). Trained on the full dev set it learns c1 = −0.64, c2 = 0.56. Routing ranks by P(win) − P(loss), on the same target as the 3-class R1 and the tie-aware baseline.
+
+## 3. Training
+
+| Item | Setting |
 |---|---|
-| 损失 | 加权负对数似然：Σ w·(−log P(真实类别)) ÷ Σ w，权重 **w = 1/n_votes**（同一 prompt 的重复票合计算 1 票），概率下限截断在 1e-7 |
-| 正则 | **显式 L2** 加进损失：λ·(‖W‖² + ‖v‖² + ‖w2‖²)。不对 b、u、a、阈值做正则。不是 AdamW 的 weight decay |
-| 优化器 | Adam（optax 默认 β），学习率为扫描项（1e-3 或 3e-3），批大小 1024，每轮重新打乱 |
-| 初始化 | W ~ N(0, 0.02²)，v、w2 ~ N(0, 0.1²)，b = u = 0，a = 0.5，c1 = −0.3，dc = 0.6，随机种子 2026 |
-| 轮数与早停 | 最多 30 轮。每轮结束后在**内层验证集**（见第 4 节）上算加权对数损失（不含正则项）。损失降幅不到 1e-5 记为一次「没改善」，连续 3 轮没改善就停，并保留最佳一轮。然后用相同设置和最佳轮数在该折**整份 train 票**上重训，再预测该折 eval 票 |
-| 样本权重 | 仍是 1/n_votes，训练和验证都一样 |
+| Loss | Weighted negative log likelihood: Σ w·(−log P(true class)) ÷ Σ w, with **w = 1/n_votes** (repeated votes on one prompt add up to 1 vote), probabilities clipped below at 1e-7 |
+| Regularization | **Explicit L2** added to the loss: λ·(‖W‖² + ‖v‖² + ‖w2‖²). b, u, a and the thresholds are not regularized. Not AdamW weight decay |
+| Optimizer | Adam (optax default β), learning rate swept (1e-3 or 3e-3), batch size 1024, reshuffled every epoch |
+| Initialization | W ~ N(0, 0.02²), v, w2 ~ N(0, 0.1²), b = u = 0, a = 0.5, c1 = −0.3, dc = 0.6, random seed 2026 |
+| Epochs and early stopping | At most 30 epochs. After each epoch the weighted log loss (without the regularization term) is computed on the **inner validation set** (section 4). A drop of less than 1e-5 counts as "no improvement"; 3 epochs in a row without improvement stops training, keeping the best epoch. Then the same setting is retrained for the best number of epochs on the fold's **whole train part** and predicts that fold's eval votes |
+| Sample weights | Still 1/n_votes, for both training and validation |
 
-## 4. 超参扫描
+## 4. Hyperparameter sweep
 
-**内层验证集怎么切：** 每个外层折 cv k 只用自己的 train 票，按 prompt 组哈希切分（md5("2026" + group_id) mod 5 == 0 的组为验证），得到 80% 训练、20% 验证。同一 prompt 不会同时落在两边。R1 选 C 用的也是这个切分。eval 票和测试集都不参与选择。
+**How the inner validation set is cut:** each outer fold cv k uses only its own train votes, split by prompt-group hash (groups with md5("2026" + group_id) mod 5 == 0 are validation), giving 80% training and 20% validation. A prompt never lands on both sides. R1 used the same split to choose C. Neither eval votes nor the test set take part in selection.
 
-**选择规则：** 每折取内层验证损失最小的组合。
+**Selection rule:** each fold takes the combination with the lowest inner validation loss.
 
-**扫描历程：**
-1. 原版 R2 只扫了 λ，d = 64、学习率 1e-3 固定。第一轮 λ ∈ {1e-5, 1e-4, 1e-3}，选中落在网格边缘的 1e-5。第二轮改成 {0, 1e-6, 1e-5, 1e-4}，4 个折选 1e-5，cv1 选 1e-6。
-2. 这次补全网格：d ∈ {16, 64, 128} × 学习率 ∈ {1e-3, 3e-3} × λ ∈ {1e-6, 1e-5, 1e-4}，共 18 组。结果 5 折都选中了 d = 128，又落在网格边缘，所以补跑了 d = 256（学习率 1e-3，3 个 λ）。轮数不是扫描项，而是每组由早停决定。
+**How the sweep went:**
+1. The original R2 swept only λ, with d = 64 and learning rate 1e-3 fixed. Round 1 used λ ∈ {1e-5, 1e-4, 1e-3} and chose 1e-5 at the grid edge. Round 2 used {0, 1e-6, 1e-5, 1e-4}: 4 folds chose 1e-5 and cv1 chose 1e-6.
+2. This time the grid was completed: d ∈ {16, 64, 128} × learning rate ∈ {1e-3, 3e-3} × λ ∈ {1e-6, 1e-5, 1e-4}, 18 combinations. All 5 folds chose d = 128, again at the grid edge, so d = 256 was added (learning rate 1e-3, 3 values of λ). Epochs are not swept; early stopping sets them for each combination.
 
-**各折选中（含 d = 256 的 21 组里）：**
+**Chosen per fold (among the 21 combinations including d = 256):**
 
-| 折 | d | 学习率 | λ | 早停轮数 |
+| Fold | d | Learning rate | λ | Early-stop epoch |
 |---|---|---|---|---|
 | cv0 | 128 | 1e-3 | 1e-5 | 15 |
 | cv1 | 256 | 1e-3 | 1e-5 | 13 |
@@ -60,11 +60,11 @@ P(赢) = 1 − σ(c2 − s)
 | cv3 | 128 | 1e-3 | 1e-5 | 14 |
 | cv4 | 128 | 1e-3 | 1e-6 | 11 |
 
-d = 256 的 5 折平均内层损失（1.0342）比 d = 128（1.0335）差，所以 d 已经不在边缘。
+d = 256 has a worse 5-fold mean inner loss (1.0342) than d = 128 (1.0335), so d is no longer at the edge.
 
-**敏感性表**（APGR 是外层 eval 票的点估计，只用来看结论是否依赖超参，不参与选择）：
+**Sensitivity table** (APGR columns are point estimates on the outer eval votes, used only to check whether the conclusion depends on hyperparameters, never for selection):
 
-| d | 学习率 | λ | 内层验证损失 | 早停轮数 (5 折) | 强弱档 APGR | 主案例 APGR$ | 主案例 CPT$(50%) |
+| d | Learning rate | λ | Inner validation loss | Early-stop epochs (5 folds) | Strong vs weak APGR | Main case APGR$ | Main case CPT$(50%) |
 |---|---|---|---|---|---|---|---|
 | 16 | 1e-3 | 1e-6 | 1.0350 | 20/18/20/19/19 | 0.589 | 0.625 | 0.32 |
 | 16 | 1e-3 | 1e-5 | 1.0346 | 24/19/20/22/21 | 0.591 | 0.627 | 0.31 |
@@ -87,43 +87,43 @@ d = 256 的 5 折平均内层损失（1.0342）比 d = 128（1.0335）差，所�
 | 256 | 1e-3 | 1e-6 | 1.0356 | 8/9/8/10/7 | 0.587 | 0.630 | 0.31 |
 | 256 | 1e-3 | 1e-5 | 1.0342 | 11/13/10/13/11 | 0.589 | 0.629 | 0.31 |
 | 256 | 1e-3 | 1e-4 | 1.0406 | 30/12/13/30/12 | 0.547 | 0.626 | 0.33 |
-| **嵌套选择** | | | | | **0.590** | **0.629** | **0.31** |
+| **Nested selection** | | | | | **0.590** | **0.629** | **0.31** |
 
-**怎么读：**
-- 只要 λ ≤ 1e-5，d 从 16 到 256、两种学习率，强弱档 APGR 都在 0.584 到 0.591 之间，主案例 APGR$ 在 0.623 到 0.630 之间，结论不依赖超参。
-- λ = 1e-4 太强，强弱档会掉到 0.53 到 0.575。不过内层验证损失本身就把它排除了。
-- 新的嵌套选择（0.590 / 0.629）和主报告里原版 R2（0.588 / 0.628）相差不超过 0.002，所以主报告的数字不用改。到 `--final` 时用新选出的 d = 128、学习率 1e-3、λ = 1e-5。
+**How to read it:**
+- As long as λ ≤ 1e-5, for d from 16 to 256 and both learning rates, strong-vs-weak APGR stays between 0.584 and 0.591 and main-case APGR$ between 0.623 and 0.630; the conclusion does not depend on hyperparameters.
+- λ = 1e-4 is too strong and drops strong vs weak to 0.53 to 0.575. But the inner validation loss already rules it out.
+- The new nested selection (0.590 / 0.629) differs from the original R2 in the main report (0.588 / 0.628) by at most 0.002, so the main report's numbers need no change. `--final` uses the newly chosen d = 128, learning rate 1e-3, λ = 1e-5.
 
-## 5. 打乱向量对照（`train_r2_mf.py --shuffle`）
+## 5. Shuffled-vector control (`train_r2_mf.py --shuffle`)
 
-- 做法是把 95,373 × 1024 的 prompt 向量表**按行随机置换**（numpy 种子 7）。每个 prompt 拿到另一个真实 prompt 的向量，而且在所有折里拿到的是同一个。**不是换成随机噪声**，所以向量的分布（范数、语言聚类等）完全保留，只切断了「向量 ↔ 这条 prompt 的投票」的对应。
-- 折划分、标签、模型身份、评分差全部不变（读的是同一个 fold_labels.parquet）。λ 在打乱后的数据上用同样的内层规则重新选，3 个折选 1e-5，cv1 和 cv2 选 1e-4。
-- 结果：各口径都回到评分差基线（强弱档 0.530 vs 基线 0.534，合并 0.668 vs 0.668），说明 R2 的提升来自 prompt 内容。
+- The 95,373 × 1024 prompt-vector table is **randomly permuted by row** (numpy seed 7). Each prompt gets another real prompt's vector, the same one in every fold. It is **not replaced with random noise**, so the vector distribution (norms, language clusters and so on) is fully kept; only the link "vector ↔ this prompt's votes" is cut.
+- Fold split, labels, model identity and rating gap are all unchanged (the same fold_labels.parquet is read). λ is re-chosen on the shuffled data with the same inner rule: 3 folds chose 1e-5, cv1 and cv2 chose 1e-4.
+- Result: every view falls back to the rating-gap baseline (strong vs weak 0.530 vs baseline 0.534, pooled 0.668 vs 0.668), so R2's gain comes from prompt content.
 
-## 6. 框架与耗时
+## 6. Framework and run time
 
-- 框架是 **JAX + optax**，在 CPU 上 jit 编译，不是 PyTorch，也不是手写 numpy。运行环境是云端 4 核 CPU，没有 GPU。为了省内存，设了 XLA 单线程矩阵运算。
-- 每个外层折（内层早停训练 + 整份 train 重训）约 26 到 44 秒，d = 128、学习率 1e-3 时约 35 秒。所以一组超参跑完 5 折约 3 分钟，21 组顺序跑约 1 小时。
-- 导出用的最终模型在开发集全部 90,923 票上训练 14 轮，用时 18 秒。
-- 参数量（d = 128）：W 约 13.1 万，v 约 6,800，其余可以忽略。
-- 推理时的开销主要在算 e5-large 的 prompt 向量。MF 本身只是一次 1024 × 128 的矩阵乘法，几乎可以忽略。推理开销表会单独给出。
+- The framework is **JAX + optax**, jit-compiled on CPU; not PyTorch and not hand-written numpy. The environment is a 4-core cloud CPU with no GPU. To save memory, XLA matrix ops were set to a single thread.
+- Each outer fold (inner early-stopping training + retraining on the whole train part) takes about 26 to 44 seconds, about 35 seconds at d = 128 and learning rate 1e-3. So one combination over 5 folds takes about 3 minutes, and 21 combinations in sequence about 1 hour.
+- The final model used for export trains for 14 epochs on all 90,923 dev votes in 18 seconds.
+- Parameter count (d = 128): W about 131k, v about 6,800, the rest negligible.
+- At inference, the cost is mainly computing the e5-large prompt vector. MF itself is one 1024 × 128 matrix product, almost negligible. The inference overhead table gives the numbers.
 
-## 7. 模型向量表（画投影图用）
+## 7. Model-vector table (for the projection plot)
 
-导出命令：`r2_sweep.py <根目录> export 128 0.001 1e-5 14`。训练数据是整个 90% 开发集（BT 评分也来自开发集），**测试集的票没有参与，也没有预测测试集。**
+Export command: `r2_sweep.py <root> export 128 0.001 1e-5 14`. Training data is the whole 90% dev set (BT ratings also from the dev set); **no test votes took part, and the test set was not predicted.**
 
-| 文件 | 内容 |
+| File | Content |
 |---|---|
-| `data/r2_model_vectors_whitened.csv` | **建议用这份画图。** 53 行 × (model, n_votes_dev, bias_u, w0…w127) |
-| `data/r2_model_vectors.csv` | 原始有效向量 g = v ⊙ w2。53 行 × (model, n_votes_dev, bias_u, g0…g127) |
-| `data/r2_model_vectors_raw_v.csv` | 未乘 w2 的 v，仅备查 |
-| `data/r2_model_vectors_meta.json` | d、学习率、λ、轮数、a、c1、c2、w2 |
+| `data/r2_model_vectors_whitened.csv` | **Recommended for plotting.** 53 rows × (model, n_votes_dev, bias_u, w0…w127) |
+| `data/r2_model_vectors.csv` | Raw effective vectors g = v ⊙ w2. 53 rows × (model, n_votes_dev, bias_u, g0…g127) |
+| `data/r2_model_vectors_raw_v.csv` | v before multiplying by w2, for reference only |
+| `data/r2_model_vectors_meta.json` | d, learning rate, λ, epochs, a, c1, c2, w2 |
 
-**为什么建议用白化版：**
-1. g 不是唯一的。把 W 换一组基，同时对 g 做反向变换，模型的输出完全一样。另外，所有 g 同时加上同一个向量也不改变输出（只用到两模型之差）。所以原始 g 之间的距离和角度部分取决于训练的随机性。
-2. 白化版的做法是：先减去 53 个模型的均值，再乘以开发集 prompt 投影 z 的协方差的平方根。这样处理后，**两个模型之间的欧氏距离 = 「两者随 prompt 变化的适合度差」在全部开发集 prompt 上的标准差**。这个量和基的选择无关，可以直接解释为「这两个模型的擅长领域差多少」。白化版的 bias_u 也同样减去了均值。
-3. 白化版做 PCA，前两个主成分解释了 65% 和 16% 的方差，所以二维投影能保留大部分结构。
+**Why the whitened version is recommended:**
+1. g is not unique. Changing W's basis while transforming g back gives exactly the same output. Adding the same vector to every g also leaves the output unchanged (only differences between two models are used). So distances and angles between raw g vectors partly reflect training randomness.
+2. The whitened version subtracts the mean over the 53 models, then multiplies by the square root of the covariance of the dev-set prompt projections z. After that, **the Euclidean distance between two models = the standard deviation, over all dev-set prompts, of the difference in how well they suit each prompt**. This quantity is independent of the basis and reads directly as "how different these two models' strengths are". The whitened bias_u also has its mean subtracted.
+3. PCA on the whitened version: the first two components explain 65% and 16% of the variance, so a 2-D projection keeps most of the structure.
 
-**注意事项：**
-- 表里是 **53 行，不是 51 行**。开发集里出现过的模型全都有向量，其中两个票很少：qwen3-coder-480b-a35b-instruct 只有 1 票，向量接近 0；gemini-2.0-flash-thinking-exp-01-21 有 251 票。画图时建议按 n_votes_dev 过滤，例如 ≥ 300 后剩 51 个。
-- 模型的整体强弱主要由评分差项（a · 评分差）承担。所以 u 和 g 表示的是「在评分差之外」随 prompt 变化的部分，不是模型的总体实力。
+**Caveats:**
+- The table has **53 rows, not 51**. Every model seen in the dev set has a vector, including two with very few votes: qwen3-coder-480b-a35b-instruct has 1 vote and a vector near 0; gemini-2.0-flash-thinking-exp-01-21 has 251 votes. For plotting, filter by n_votes_dev, for example ≥ 300, which leaves 51.
+- A model's overall strength is carried mainly by the rating-gap term (a · rating gap). So u and g represent the prompt-dependent part "beyond the rating gap", not a model's overall ability.

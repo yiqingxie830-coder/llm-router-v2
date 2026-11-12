@@ -1,43 +1,43 @@
-# 推理开销表：每千次请求的额外成本、延迟与净节省
+# Inference overhead: extra cost, latency and net saving per 1,000 requests
 
-**一句话结论：** R1 和 R2 每千次请求的路由开销约 $0.02，只占它们比正式基线多省下的 $0.77 的 3%，扣除后净省约 $0.75。真正的代价是延迟：在 4 核 CPU 上，算 prompt 向量的中位延迟是 0.19 秒，P90 是 1.0 秒。上线时应该放到 GPU 上，或者换更小的向量模型。R3 每千次请求要多花约 $0.22，中位延迟 1.1 秒，比 R1 和 R2 贵 10 倍、慢 6 倍。这些数来自 50 条试打（r3/pilot_summary.md）。
+**In one sentence:** routing with R1 or R2 costs about $0.02 per 1,000 requests, only 3% of the $0.77 they save over the formal baseline, for a net saving of about $0.75. The real cost is latency: on 4 CPU cores, computing the prompt vector takes 0.19 s at the median and 1.0 s at P90. In production it should run on a GPU or use a smaller vector model. R3 costs about $0.22 more per 1,000 requests with a median latency of 1.1 s, 10 times the cost of R1 and R2 and 6 times as slow. Those numbers come from the 50-prompt pilot (r3/pilot_summary.md).
 
-## 1. 实测（scripts/overhead_bench.py → reports/overhead_bench.json）
+## 1. Measurements (scripts/overhead_bench.py → reports/overhead_bench.json)
 
-- **环境：** 云端容器，4 核 CPU，无 GPU，fastembed（ONNX）4 线程。
-- **样本：** 从口径 ② 的 prompt 里随机抽 200 条（种子 2026），长度分布和真实请求一致。token 数中位 29、均值 71，截断到 512。
-- **测法：** 一条一条地算向量（batch = 1），这样更接近线上单个请求。
+- **Environment:** cloud container, 4 CPU cores, no GPU, fastembed (ONNX) with 4 threads.
+- **Sample:** 200 random prompts from view ② (seed 2026), with a length distribution matching real requests. Median 29 tokens, mean 71, truncated at 512.
+- **Method:** vectors are computed one at a time (batch = 1), closer to a single production request.
 
-| 环节 | 中位 | P90 | P99 | 均值 |
+| Step | Median | P90 | P99 | Mean |
 |---|---|---|---|---|
-| prompt 向量（multilingual-e5-large） | 188 ms | 1,028 ms | 3,963 ms | 462 ms |
-| R1 路由头（逻辑回归，1,079 维点积） | 0.001 ms | | | |
-| R2 路由头（1024×128 投影 + 两个模型向量内积） | 0.014 ms | | | |
-| 基线（评分差 ÷ 价格差，查表） | ≈ 0 | | | |
+| Prompt vector (multilingual-e5-large) | 188 ms | 1,028 ms | 3,963 ms | 462 ms |
+| R1 router head (logistic regression, 1,079-dim dot product) | 0.001 ms | | | |
+| R2 router head (1024×128 projection + two model-vector dot products) | 0.014 ms | | | |
+| Baseline (rating gap ÷ price gap, table lookup) | ≈ 0 | | | |
 
-延迟几乎全部来自算向量。长 prompt 截断到 512 token 后，单条在 CPU 上要 1 到 4 秒。
+Almost all the latency is the vector. Long prompts, truncated to 512 tokens, take 1 to 4 seconds each on CPU.
 
-## 2. 每千次请求的开销与净节省（美元主案例，CPT 50% 这一点）
+## 2. Overhead and net saving per 1,000 requests (main dollar case, at CPT 50%)
 
-**成本折算方式：** 平均每条请求要占满 4 核 CPU 0.46 秒，所以一千次请求约占 0.128 机时。按 4 核云主机每小时约 $0.17 计算（AWS c7i.xlarge 按需价的量级，没有实时核对），每千次请求约 $0.022。这个价格就算再高 10 倍，也只有 $0.22，结论不变。
+**How cost is converted:** on average each request occupies all 4 CPU cores for 0.46 s, so 1,000 requests use about 0.128 machine-hours. At about $0.17 per hour for a 4-core cloud machine (the order of AWS c7i.xlarge on-demand pricing, not checked live), that is about $0.022 per 1,000 requests. Even at 10 times that price it would be $0.22, and the conclusion would not change.
 
-| 路由器 | 每千次请求的 LLM 调用成本 | 路由开销 | 合计 | 比正式基线省 | 比全发强模型省 | 额外延迟（中位 / P90） |
+| Router | LLM call cost per 1,000 | Routing overhead | Total | Saved vs formal baseline | Saved vs all-strong | Added latency (median / P90) |
 |---|---|---|---|---|---|---|
-| 全发强模型 | $18.89 | 0 | $18.89 | — | — | 0 |
-| 正式基线（评分差 ÷ 价格差） | $9.23 | ≈ 0 | $9.23 | — | $9.66（51%） | ≈ 0 |
-| R1（逻辑回归） | $8.46 | $0.022 | $8.48 | **$0.75（8%）** | $10.41（55%） | 0.19 s / 1.0 s |
-| R2（矩阵分解） | $8.46 | $0.022 | $8.48 | **$0.75（8%）** | $10.41（55%） | 0.19 s / 1.0 s |
-| R3（Haiku 打标 + 线性路由） | 待 R3 评估 | $0.22（关思考）/ $0.23（思考 low） | | | | 1.1 s / 1.4 s（关思考）；1.1 s / 2.4 s（思考 low） |
+| All to the strong model | $18.89 | 0 | $18.89 | — | — | 0 |
+| Formal baseline (rating gap ÷ price gap) | $9.23 | ≈ 0 | $9.23 | — | $9.66 (51%) | ≈ 0 |
+| R1 (logistic regression) | $8.46 | $0.022 | $8.48 | **$0.75 (8%)** | $10.41 (55%) | 0.19 s / 1.0 s |
+| R2 (matrix factorization) | $8.46 | $0.022 | $8.48 | **$0.75 (8%)** | $10.41 (55%) | 0.19 s / 1.0 s |
+| R3 (Haiku labels + linear router) | pending R3 evaluation | $0.22 (no thinking) / $0.23 (thinking low) | | | | 1.1 s / 1.4 s (no thinking); 1.1 s / 2.4 s (thinking low) |
 
-- 「LLM 调用成本」是在主案例里收回强弱差距 50% 时的每千次成本，来自主报告第 5 节。CPT 的网格精度是 1%，所以有约 ±$0.15 的误差，比路由开销大一个数量级。
-- R3 线上每条请求都要调用一次 Haiku，不能用 Batch 五折，按标准价算。试打 50 条的实测是：输入约 1,830 token（其中打标说明加结构化输出格式约 1,600），输出约 66 token，每条 $0.00022。所以每千次 $0.22，会吃掉 R1/R2 收益的 28%（开发集 $0.77）或 17%（测试集 $1.29）。R3 要划算，它的 CPT 至少要比 R2 再低 $0.22。
-- R3 的延迟：关思考时中位 1.1 秒、P90 1.4 秒；开思考（effort low）时 P90 是 2.4 秒，因为少数请求会思考 300 到 400 token。
+- "LLM call cost" is the cost per 1,000 requests at the point where 50% of the strong-weak gap is recovered in the main case, from section 5 of the main report. CPT is on a 1% grid, so it carries about ±$0.15 of error, an order of magnitude more than the routing overhead.
+- In production R3 calls Haiku once per request, so the Batch half price does not apply; standard prices are used. The 50-prompt pilot measured about 1,830 input tokens (about 1,600 of them the labeling instructions plus the structured-output format) and about 66 output tokens, $0.00022 per prompt. So $0.22 per 1,000, which would eat 28% of R1/R2's gain (dev set, $0.77) or 17% (test set, $1.29). For R3 to pay off, its CPT has to be at least $0.22 lower than R2's.
+- R3 latency: with thinking off, median 1.1 s and P90 1.4 s; with thinking on (effort low), P90 is 2.4 s, because a few requests think for 300 to 400 tokens.
 
-## 3. 解读
-1. **钱不是问题，延迟才是。** 路由开销只占强模型单次回答成本（$18.89 / 千次）的 0.1%。但 CPU 上 P90 约 1 秒的额外等待，对聊天产品来说很明显。
-2. **怎么降延迟（还没有实测）：**
-   - 放到 GPU 上跑：e5-large 单条一般在 10 到 20 毫秒的量级。
-   - 换小模型：例如 multilingual-e5-small，参数约为 large 的 1/5，但效果需要重新验证。
-   - 截断长度从 512 降到 128：中位长度只有 29 token，绝大多数请求不受影响，但需要重新验证 APGR。
-   - 和第一个 token 的生成并行，把这部分延迟藏起来。
-3. **R1 和 R2 的开销一样**，因为都用同一个 prompt 向量。R2 的路由头只多了 0.013 毫秒。所以选 R2 的理由（强弱档 +0.054、实力接近的配对 +0.133）不需要再付额外开销。
+## 3. Interpretation
+1. **Money is not the problem; latency is.** Routing overhead is 0.1% of the strong model's answer cost ($18.89 per 1,000). But about 1 s of extra wait at P90 on CPU is noticeable in a chat product.
+2. **Ways to cut latency (not yet measured):**
+   - Run on a GPU: e5-large typically takes on the order of 10 to 20 ms per request.
+   - Use a smaller model: for example multilingual-e5-small, about 1/5 the parameters of large, though quality has to be re-validated.
+   - Truncate at 128 instead of 512 tokens: the median length is only 29 tokens, so most requests are unaffected, but APGR has to be re-validated.
+   - Run it in parallel with generating the first token to hide the latency.
+3. **R1 and R2 have the same overhead**, because they use the same prompt vector. R2's router head adds only 0.013 ms. So choosing R2 for its gains (strong vs weak +0.054, closely matched pairs +0.133) costs nothing extra.

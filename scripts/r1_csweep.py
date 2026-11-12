@@ -1,14 +1,16 @@
-"""r1_csweep.py — R1 三分类的正则强度 C: 嵌套选择 + 敏感性表 (Yiqing 2026-11-10 第 4 条)
+"""r1_csweep.py — regularization C for the 3-class R1: nested selection + sensitivity table (item 4 of the 2026-11-10 decisions)
 
-选择规则 (只用训练折, 测试集不参与):
-  对每个外层折 cv k, 只用该折的 train 票, 按 group_id 再切 80% / 20% (固定种子, 同一 prompt 不跨切),
-  在 80% 上训练、在 20% 上算三分类对数损失 (权重 1/n_votes), 取损失最小的 C;
-  再用该 C 在整份 train 上重训, 预测 cv k 的 eval 票。eval 票从不参与选 C。
-敏感性: 每个 C 都在 5 折上训练一遍, 报 强弱档 APGR (按调用比例) 和 美元主案例 APGR$ 的点估计。
+Selection rule (training folds only, the test set is not used):
+  for each outer fold cv k, take only that fold's train votes, split them again 80% / 20% by group_id (fixed seed,
+  a prompt never straddles the split), train on 80%, compute the 3-class log loss on 20% (weight 1/n_votes) and
+  take the C with the lowest loss; then retrain with that C on the whole train part and predict cv k's eval votes.
+  Eval votes never take part in choosing C.
+Sensitivity: every C is trained on all 5 folds; reports point estimates of strong-vs-weak APGR (call share) and
+  main dollar case APGR$.
 
-用法: python -I r1_csweep.py <v2 根目录> <C>      (每个 C 一个进程, 可并行)
-      python -I r1_csweep.py <v2 根目录> --summarize
-产出: preds/r1b_C<C>.parquet, reports/r1_csweep_<C>.json, 汇总 reports/r1_c_selection.md, preds/r1b_nested_eff.parquet
+Usage: python -I r1_csweep.py <repo root> <C>      (one process per C, can run in parallel)
+       python -I r1_csweep.py <repo root> --summarize
+Writes: preds/r1b_C<C>.parquet, reports/r1_csweep_<C>.json, summary reports/r1_c_selection.md, preds/r1b_nested_eff.parquet
 """
 import hashlib
 import json
@@ -104,12 +106,12 @@ def summarize():
     preds = {C: pd.read_parquet(root / f"preds/r1b_C{C}.parquet") for C in CS}
     nested = pd.concat([preds[pick[k]][preds[pick[k]].context == f"cv{k}"] for k in range(5)])
     nested[["context", "id", "p"]].to_parquet(root / "preds/r1b_nested_eff.parquet", index=False)
-    preds["嵌套选择"] = nested
-    L = ["# R1 (三分类) 正则强度 C 的选择与敏感性", "",
-         "**选择方式：** 每个外层折只用自己的 train 票，按 prompt 组再切 80/20，在 80% 上训练、20% 上算对数损失，"
-         "取最小的 C，再在整份 train 上重训、预测该折 eval 票。eval 票和测试集都不参与选 C。", "",
-         "扫描范围 C ∈ " + str(CS) + "。各折选中: " + ", ".join(f"cv{k} → {pick[k]}" for k in range(5)), "",
-         "| C | 内层验证对数损失 (5 折平均) | 强弱档 APGR (按调用比例) | 美元主案例 APGR$ | 主案例 CPT$(50%) |",
+    preds["nested selection"] = nested
+    L = ["# R1 (3-class): choice of regularization C and sensitivity", "",
+         "**How C is chosen:** each outer fold uses only its own train votes, splits them 80/20 by prompt group, trains on 80% and computes log loss on 20%, "
+         "takes the C with the lowest loss, then retrains on the whole train part and predicts that fold's eval votes. Neither eval votes nor the test set take part in choosing C.", "",
+         "Grid C ∈ " + str(CS) + ". Chosen per fold: " + ", ".join(f"cv{k} → {pick[k]}" for k in range(5)), "",
+         "| C | Inner validation log loss (5-fold mean) | Strong vs weak APGR (call share) | Main dollar case APGR$ | Main case CPT$(50%) |",
          "|---|---|---|---|---|"]
     for C, pr in preds.items():
         s = sw.merge(pr, on=["context", "id"])
@@ -118,7 +120,7 @@ def summarize():
         ap, cpt = apgr_cost(m.q_hi.values, key, (m.cost_hi - m.cost_lo).values)
         il = f"{np.mean(list(inner[C].values())):.4f}" if C in inner else "—"
         L.append(f"| {C} | {il} | {apgr_frac(s.q_hi.values, s.p_win.values):.3f} | {ap:.3f} | {cpt:.2f} |")
-    L += ["", "点估计, 不含 bootstrap; 敏感性只用来看结论是否依赖 C。"]
+    L += ["", "Point estimates, no bootstrap; the sensitivity rows only show whether the conclusion depends on C."]
     (root / "reports/r1_c_selection.md").write_text("\n".join(L))
     print("\n".join(L))
 

@@ -1,59 +1,59 @@
-# LLM 路由器 v2 · 阶段 1 数据报告
+# LLM Router v2 · Stage 1 data report
 
-**一句话结论：** 我们把 13.6 万条 Chatbot Arena 人类投票整理成 10.1 万条干净、按 prompt 分组划分的数据，并搭好了评估框架。只看「两个模型差多少分」就能拿到不错的路由效果，所以以后任何读 prompt 的路由器，都必须和这个基线比，而不是和随机路由比。
+**In one sentence:** we turned 136k Chatbot Arena human votes into 101k clean votes split by prompt group, and built the evaluation framework. Knowing only "how far apart the two models are rated" already routes well, so every router that reads the prompt from now on has to beat that baseline, not random routing.
 
-## 1. 数据从哪来
-- 数据集：lmarena-ai/arena-human-preference-140k，时间是 2025 年 4 到 7 月，共 135,634 票，53 个模型（Gemini 2.5、o3、Claude 4 等），文件经过 sha256 校验。
-- 范围是**首轮路由**。用户在同一窗口追问时，Arena 会换一对新模型再投一票，这类「追问票」前面带着别的模型的对话上下文。路由器做决定时只能看到第一句话，所以主数据只用每个会话的第一票（108,315 票）。追问票另外存一份，留给以后研究「对话中途降级」。
+## 1. Where the data comes from
+- Dataset: lmarena-ai/arena-human-preference-140k, April to July 2025, 135,634 votes, 53 models (Gemini 2.5, o3, Claude 4 and others); files checked against sha256.
+- Scope is **first-turn routing**. When a user keeps chatting in the same window, Arena swaps in a new model pair and takes another vote; these follow-up votes carry conversation context from other models. A router decides on the first message only, so the main data uses only the first vote of each session (108,315 votes). Follow-up votes are kept in a separate file for later work on downgrading mid-conversation.
 
-## 2. 清洗：只去掉真噪声（剩 101,058 票，删了 6.7%）
-| 规则 | 删除 | 理由 |
+## 2. Cleaning: remove only genuine noise (101,058 votes left, 6.7% removed)
+| Rule | Removed | Reason |
 |---|---|---|
-| 首条消息不到 16 个字符 | 7,029 | 「hi」「test」这类，没有路由信息，投票也很随意 |
-| 有一侧回答为空 | 77 | 比的是「有回答 vs 没回答」，不是模型能力 |
-| 回答被服务商内容过滤截断 | 133 | 这段文字是网关插入的，不是模型写的；几乎都来自 amazon nova |
-| prompt 和两个模型完全相同 | 18 | 分不清是重复提交还是独立投票，保守起见删掉 |
+| First message under 16 characters | 7,029 | "hi", "test" and the like carry no routing information, and the votes are casual |
+| One side's answer is empty | 77 | Compares "an answer vs no answer", not model ability |
+| Answer cut by a provider content filter | 133 | The text is inserted by the gateway, not written by the model; almost all from amazon nova |
+| Identical prompt and model pair | 18 | Cannot tell a resubmission from independent votes, so dropped conservatively |
 
-模型自己拒答属于模型表现，**不删**。语言只打标记、不删：英文占 56%。波兰语从 6 月 16 日那一周起从 0.5% 突然升到 12–24%，疑似一次集中推广，后面要做敏感性分析。
+A model refusing on its own is model behaviour and is **kept**. Language is flagged, not filtered: English is 56%. Polish jumps from 0.5% to 12–24% from the week of June 16, which looks like a promotion campaign; a sensitivity analysis is planned.
 
-## 3. 标签：人类偏好，不用 AI 改
-- 每一票有三种结果：强的一方赢、弱的一方赢、平局（含「两个都差」）。平局单独标记，不并进任何一方。
-- **路由目标 y_route**：只有强的一方明确胜出才记 1（发强模型）；平局记 0。用户觉得一样好，就选便宜的。原始的平局信息仍然保留。
-- **「强」由数据自己定义**：用 Bradley-Terry 模型从投票里算出每个模型的评分，不照抄官方排行榜，这样评分和标签的口径一致。官方榜会对回答长度和格式做「风格控制」修正，我们不做，所以 Claude Opus 4 在这里只排第 28 名。这里的「弱」指的是「这批用户更不喜欢」，不代表能力弱。
+## 3. Labels: human preference, never rewritten by AI
+- Each vote has three outcomes: the stronger side wins, the weaker side wins, or a tie (including "both bad"). Ties are flagged on their own and never assigned to either side.
+- **Routing target y_route**: 1 (send to the strong model) only when the stronger side wins outright; ties are 0. If the user finds both equally good, take the cheaper one. The raw tie information is kept.
+- **"Strong" is defined by the data itself**: each model's rating is computed from the votes with a Bradley-Terry model rather than copied from the official leaderboard, so ratings and labels share one definition. The official leaderboard applies "style control" for answer length and formatting; we do not, which is why Claude Opus 4 ranks only 28th here. "Weak" here means "this set of users liked it less", not "less capable".
 
-## 4. 评分泄漏与强弱档
-- **评分每折单独拟合**：每一折只用自己训练部分的投票计算评分，测试集的投票不参与。评分变动后，有 3.9% 的投票「谁是高分方」发生了翻转，全部出现在评分差不到 20 分的模型对上。
-- **强弱档用固定名单**：一开始用 k-means 自动分层，但在某一折上强档从 10 个模型跳到了 21 个。所以改成先看名次–分数图，再在明显断层处切开：第 10/11 名之间差 21.4 分，第 40/41 名之间差 24.6 分。**前 10 名算强档、后 11 名算弱档**，中间 30 个模型不参与强弱对比。这两条切线两侧的模型在 6 次拟合中分数区间都不重叠，所以名单在每一折都成立。
-- 强档 vs 弱档共 9,332 票：强档胜 61.6%，弱档胜 17.4%，平局 21.1%。
+## 4. Rating leakage and the strong / weak tiers
+- **Ratings are fitted per fold**: each fold computes ratings only from its own training votes; test votes are never used. After refitting, 3.9% of votes change which side is higher-rated, all on model pairs less than 20 points apart.
+- **Tiers use a fixed list**: automatic k-means tiering was tried first, but in one fold the strong tier jumped from 10 models to 21. So we looked at the rank–rating plot and cut at clear gaps: 21.4 points between ranks 10 and 11, 24.6 points between ranks 40 and 41. **The top 10 are the strong tier and the bottom 11 the weak tier**; the 30 models in between take no part in the strong-vs-weak comparison. Models on either side of both cuts have non-overlapping rating ranges across all 6 fits, so the list holds in every fold.
+- Strong vs weak has 9,332 votes: strong wins 61.6%, weak wins 17.4%, ties 21.1%.
 
-## 5. 重复 prompt：噪声有上限
-- 有 3,289 个 prompt 被投了两次以上（覆盖 8.9% 的投票），其中 **37%** 的结果互相矛盾。即使每个 prompt 都猜「多数票」，准确率最多也只有 **79.5%**。（这个数偏保守：重复的 prompt 对上的往往是不同的模型组合。）
-- 重复 prompt 保留，不删：它们的作用是让 soft_label 记录「多少人觉得强的更好」。防泄漏靠 group_id 解决，同一个 prompt 的所有投票一定落在同一折。
+## 5. Repeated prompts: noise has a ceiling
+- 3,289 prompts were voted on two or more times (8.9% of votes), and **37%** of them have contradictory outcomes. Even guessing the majority vote for every prompt tops out at **79.5%** accuracy. (A conservative figure: repeated prompts often met different model pairs.)
+- Repeated prompts are kept: they let soft_label record "how many people preferred the stronger model". Leakage is handled with group_id: all votes on the same prompt always land in the same fold.
 
-## 6. 划分
-- 按 prompt 分组：先留出 10% 作为最终测试集（10,135 票，任何模型选择都不能使用），剩下 90% 分成 5 折交叉验证，随机种子固定为 2026，折号写进表里。
+## 6. Split
+- By prompt group: 10% is held out first as the final test set (10,135 votes, not to be used for any model choice); the remaining 90% is split into 5 cross-validation folds, random seed fixed at 2026, with the fold number stored in the table.
 
-## 7. 评估框架（这一阶段不训练路由器）
-- 横轴是「发给强模型的比例」，用来代表成本；纵轴是 PGR，即强弱模型之间的质量差距被恢复了多少。汇总指标有 APGR（曲线下面积）、CPT(50%) 和 CPT(80%)，每个指标都附 1000 次按 prompt 组重抽样得到的 95% 区间。
-- 平局时两边质量相同，所以把平局发给小模型不会扣分。
-- 开发集 5 折的结果：
+## 7. Evaluation framework (no router is trained in this stage)
+- The x-axis is "share of calls sent to the strong model", standing in for cost; the y-axis is PGR, how much of the quality gap between the strong and weak models is recovered. Summary metrics are APGR (area under the curve), CPT(50%) and CPT(80%), each with a 95% interval from 1000 resamples by prompt group.
+- On a tie both sides have the same quality, so sending a tie to the small model costs nothing.
+- Results on the dev set, 5 folds:
 
-| 口径 | 票数 | 随机路由 | 评分差基线（不看 prompt） |
+| View | Votes | Random router | Rating-gap baseline (ignores the prompt) |
 |---|---|---|---|
-| ① 全部模型对合并 | 90,923 | 0.497 | **0.668** |
-| ① 评分差 < 50 分 | 36,414 | 0.485 | 0.645 |
-| ① 评分差 50–150 分 | 45,867 | 0.500 | 0.580 |
-| ① 评分差 > 150 分 | 8,642 | 0.500 | 0.530 |
-| ② 强档 vs 弱档 | 8,333 | 0.504 | 0.534 |
+| ① All model pairs pooled | 90,923 | 0.497 | **0.668** |
+| ① Rating gap < 50 points | 36,414 | 0.485 | 0.645 |
+| ① Rating gap 50–150 points | 45,867 | 0.500 | 0.580 |
+| ① Rating gap > 150 points | 8,642 | 0.500 | 0.530 |
+| ② Strong vs weak | 8,333 | 0.504 | 0.534 |
 
-随机路由的 APGR 约为 0.5，说明框架算得没有问题。
+The random router's APGR is about 0.5, which confirms the framework computes correctly.
 
-> **注意：** 口径 ① 的合并数字受 Arena 中各模型对出现频率的影响，不对应任何一个具体的产品场景。具体场景请参考口径 ② 和按评分差分桶的结果。
+> **Note:** the pooled numbers in view ① depend on how often each model pair appears in Arena and do not correspond to any one product scenario. For concrete scenarios, use view ② and the rating-gap buckets.
 
-## 8. 对下一阶段的含义
-1. 路由器的提升一律和「评分差基线」比较。真正的考验在两个模型差距大的场景（> 150 分，以及强弱档），那里基线只有 0.53 左右。
-2. 训练时，热门 prompt 要按投票数降权，或者每个 prompt 只保留一行，用 soft_label 作为训练目标。
-3. 成本目前用「发给强模型的比例」近似，下一阶段换成真实的 API 价格。
+## 8. What this means for the next stage
+1. Every router's gain is measured against the rating-gap baseline. The real test is where the two models are far apart (> 150 points, and strong vs weak), where the baseline is only about 0.53.
+2. In training, popular prompts should be down-weighted by vote count, or kept as one row per prompt with soft_label as the target.
+3. Cost is approximated for now by the share of calls sent to the strong model; the next stage switches to real API prices.
 
 ---
-**文件**：data/arena_clean.parquet（清洗后的全量数据）、data/arena_labeled.parquet（加上 group_id、split、fold）、data/fold_labels.parquet（每折的评分和标签）、data/arena_strong_vs_weak.parquet（强弱档评估视图）。脚本按顺序运行：download → clean → tier_models（全量评分，仅用于描述）→ make_labels → split → fold_ratings → plot_rank_rating → evaluate。
+**Files**: data/arena_clean.parquet (full cleaned data), data/arena_labeled.parquet (adds group_id, split, fold), data/fold_labels.parquet (per-fold ratings and labels), data/arena_strong_vs_weak.parquet (the strong-vs-weak evaluation view). Scripts run in order: download → clean → tier_models (ratings on all data, descriptive only) → make_labels → split → fold_ratings → plot_rank_rating → evaluate.

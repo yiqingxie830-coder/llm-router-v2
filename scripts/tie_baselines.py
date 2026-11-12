@@ -1,13 +1,15 @@
-"""tie_baselines.py — 带平局的评分差基线 (Yiqing 2026-11-10: 基线和 R1 必须同口径, 都用 P(赢) − P(输))
+"""tie_baselines.py — rating-gap baselines with ties (set 2026-11-10: the baseline and R1 must use the same target, P(win) − P(loss))
 
-两个版本, 都只用各情境自己的 train 票拟合 (权重 1/n_votes), 预测该情境的 eval 票:
-  分桶经验比例 (正式): 按 train 票评分差的 10 分位分桶, 每桶算加权的 赢/平/输 比例;
-                       eval 票落到哪个桶就用哪个桶的比例。不假设任何函数形式。
-  三分类评分差 (核对): 多项逻辑回归, 特征只有 评分差/100, 和 R1 三分类是同一类模型、少了 prompt 和模型身份。
-输出 p = (1 + P(赢) − P(输)) / 2, 使 2p − 1 = 预期质量提升, 直接给 evaluate_cost.py 的 --base 用。
+Two versions, each fitted only on the context's own train votes (weight 1/n_votes) and predicting that context's eval votes:
+  empirical bucket shares (formal): bucket train votes by deciles of the rating gap and compute the weighted
+                       win / tie / loss shares per bucket; an eval vote takes the shares of its bucket.
+                       No functional form is assumed.
+  3-class rating gap (check): multinomial logistic regression whose only feature is gap / 100; the same model
+                       family as the 3-class R1, minus the prompt and model identity.
+Output p = (1 + P(win) − P(loss)) / 2, so 2p − 1 = expected quality gain; feeds evaluate_cost.py directly.
 
-用法: python -I tie_baselines.py <v2 根目录> [--final]
-产出: preds/base_tie_bucket.parquet, preds/base_tie_mlogit.parquet (列 context, id, p, p_win, p_tie, p_lose)
+Usage: python -I tie_baselines.py <repo root> [--final]
+Writes: preds/base_tie_bucket.parquet, preds/base_tie_mlogit.parquet (columns context, id, p, p_win, p_tie, p_lose)
 """
 import sys
 from pathlib import Path
@@ -28,7 +30,7 @@ for ctx in ctxs:
     d = fl[fl.context == ctx]
     tr, ev = d[d.role == "train"], d[d.role == "eval"]
     w = 1 / tr.n_votes.values
-    # 分桶
+    # buckets
     edges = np.unique(np.quantile(tr.rating_gap, np.linspace(0, 1, NB + 1)))
     bt = np.clip(np.searchsorted(edges, tr.rating_gap, side="right") - 1, 0, len(edges) - 2)
     be = np.clip(np.searchsorted(edges, ev.rating_gap, side="right") - 1, 0, len(edges) - 2)
@@ -39,15 +41,15 @@ for ctx in ctxs:
     pb = P[be]
     out_b.append(pd.DataFrame({"context": ctx, "id": ev.id.values, "p": (1 + pb[:, 2] - pb[:, 0]) / 2,
                                "p_win": pb[:, 2], "p_tie": pb[:, 1], "p_lose": pb[:, 0]}))
-    # 三分类逻辑回归
+    # 3-class logistic regression
     clf = LogisticRegression(C=1.0, max_iter=2000).fit(tr.rating_gap.values[:, None] / 100, tr.cls.values,
                                                        sample_weight=w)
     pm = clf.predict_proba(ev.rating_gap.values[:, None] / 100)[:, np.searchsorted(clf.classes_, [0, 1, 2])]
     out_m.append(pd.DataFrame({"context": ctx, "id": ev.id.values, "p": (1 + pm[:, 2] - pm[:, 0]) / 2,
                                "p_win": pm[:, 2], "p_tie": pm[:, 1], "p_lose": pm[:, 0]}))
     if ctx == ctxs[0]:
-        print(ctx, "分桶边界", edges.round(1).tolist())
-        print("各桶 输/平/赢", P.round(3).tolist())
+        print(ctx, "bucket edges", edges.round(1).tolist())
+        print("loss/tie/win per bucket", P.round(3).tolist())
 sfx = "_final" if use_final else ""
 pd.concat(out_b).to_parquet(root / f"preds/base_tie_bucket{sfx}.parquet", index=False)
 pd.concat(out_m).to_parquet(root / f"preds/base_tie_mlogit{sfx}.parquet", index=False)

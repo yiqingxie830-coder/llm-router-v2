@@ -1,38 +1,41 @@
-"""clean.py — Step 1 清洗: 只去掉"真噪声", 不碰人类投票标签
+"""clean.py — Step 1 cleaning: remove only genuine noise, never touch the human vote labels
 
-输入: 140k 原始 parquet 目录 (download.py 的输出, 视为不可信文件, 用 python -I 读)
-输出:
-  data/arena_clean.parquet            主数据: evaluation_order == 1, 清洗后
-  data/arena_followup_clean.parquet   追问票子集: evaluation_order > 1, 同样规则清洗, 本阶段不用
-  reports/step1_cleaning.md           每条规则删了多少行
+Input: the raw 140k parquet directory (output of download.py; treated as untrusted, read with python -I)
+Output:
+  data/arena_clean.parquet            main data: evaluation_order == 1, cleaned
+  data/arena_followup_clean.parquet   follow-up votes: evaluation_order > 1, same rules, not used in this stage
+  reports/step1_cleaning.md           rows removed by each rule
 
-关键决策 (面试可讲)
-------------------
-D0 范围 = "首轮路由" (Yiqing 2026-11-07 确认)。
-   Arena 同一会话里投完一票会换一对新模型继续聊 (evaluation_order 2, 3, ...)。
-   这些追问票的 prompt 前面有别的模型留下的上下文, 路由器只看这一句追问会把难题误判成简单题。
-   所以主数据只用 order == 1; 追问票不删, 单独存, 以后研究"中途降级"用。
-D1 prompt = 第一条用户消息 (只取 text 段)。路由决策发生在用户发出第一句话的那一刻,
-   后续轮次、回答内容、回答长度都是"未来信息", 一律不进主表 (v1 吃过这个亏)。
-D2 删除规则, 按顺序执行, 每条只统计"前面规则没删掉的行":
-   R1 第一条消息去空白后 < 16 字符: "hi", "test", "1+1" 这类几乎没有路由信息,
-      而且投票多半是随手点的 (真噪声)。
-   R2 任一侧回答为空: 用户在比"一个回答 vs 什么都没有", 测的不是模型能力。
-   R3 任一侧回答被服务商内容过滤截断 ("The generated text has been blocked by our content filters."):
-      数据里只有这一种明确的"系统报错"。这是 API 网关插入的文字, 不是模型写的。
-      实际几乎全来自 amazon nova 两个模型。
-      注意: 模型自己拒答 ("I can't help with that") 是模型表现, 不删。
-      也检查过 "TypeError..." 开头的回答 (2 条), 是 prompt 本身在问报错, 不算系统错误。
-   R4 完全重复的 (prompt 原文, model_a, model_b) 组合只保留时间最早的一条:
-      按需求文档执行。原因是无法区分"同一人重复提交"和"不同人独立投票",
-      保守起见去掉。不同模型对上的同一 prompt 不受影响, Step 3 会用它们算软标签。
-D3 语言: 保留全部语言, 只打标记, 不删。
-   language = 数据集自带标记 (LMArena 统一检测, 来源一致);
-   langdetect_lang = 我们用 langdetect 再测一遍, 只用来报告两者一致率, 作为交叉检查。
-   is_en = (language == "en"), 后面做"只看英文"的敏感性分析。
-D4 tie / both_bad 原样保留在 winner 列, 不归到任何一方 (Step 2 再打 y 标签)。
+Key decisions
+-------------
+D0 Scope = "first-turn routing" (confirmed 2026-11-07).
+   After a vote, Arena swaps in a new model pair and the session continues (evaluation_order 2, 3, ...).
+   Those follow-up prompts carry context written by other models; a router that only sees the follow-up
+   line would mistake hard tasks for easy ones. So the main data is order == 1 only; follow-up votes are
+   kept in a separate file for later work on mid-conversation downgrading.
+D1 prompt = the first user message (text parts only). The routing decision happens the moment the user
+   sends the first message; later turns, answer content and answer length are "future information" and
+   never enter the main table (v1 learned this the hard way).
+D2 Removal rules, applied in order; each counts only rows not already removed:
+   R1 First message < 16 characters after stripping: "hi", "test", "1+1" carry almost no routing
+      information, and those votes are mostly casual clicks (genuine noise).
+   R2 Either answer is empty: the user compared "an answer vs nothing", which does not measure the model.
+   R3 Either answer was cut by a provider content filter ("The generated text has been blocked by our content filters."):
+      the only clear "system error" in the data. The text is inserted by the API gateway, not written by
+      the model, and comes almost entirely from the two amazon nova models.
+      Note: a model refusing on its own ("I can't help with that") is model behaviour and is kept.
+      Answers starting with "TypeError..." (2 rows) were also checked: the prompt itself asked about the
+      error, so they are not system errors.
+   R4 Exact duplicates of (prompt text, model_a, model_b) keep only the earliest row: we cannot tell
+      "the same person resubmitting" from "different people voting independently", so we drop them
+      conservatively. The same prompt on a different model pair is unaffected; Step 3 uses those for soft labels.
+D3 Language: keep every language, flag only.
+   language = the dataset's own tag (detected by LMArena, one consistent source);
+   langdetect_lang = our own langdetect pass, used only to report the agreement rate as a cross-check.
+   is_en = (language == "en"), for an English-only sensitivity analysis later.
+D4 tie / both_bad stay in the winner column as they are, assigned to neither side (Step 2 sets y labels).
 
-用法: python -I clean.py <原始 parquet 目录> <v2 根目录>
+Usage: python -I clean.py <raw parquet dir> <repo root>
 """
 import glob
 import sys
@@ -42,7 +45,7 @@ import pandas as pd
 from langdetect import DetectorFactory, detect
 from langdetect.lang_detect_exception import LangDetectException
 
-DetectorFactory.seed = 0  # langdetect 内部有随机性, 固定种子保证可复现
+DetectorFactory.seed = 0  # langdetect is randomized internally; fix the seed for reproducibility
 
 MIN_PROMPT_CHARS = 16
 FILTER_MSG = "The generated text has been blocked by our content filters"
@@ -59,7 +62,7 @@ def text_of(turn):
 
 
 def first(conv, role):
-    """对话里第一个指定角色的文本; 没有则返回空串。"""
+    """Text of the first turn with the given role; empty string if there is none."""
     return next((text_of(t) for t in conv if t["role"] == role), "")
 
 
@@ -75,43 +78,43 @@ df = pd.DataFrame({
     "is_code": raw.is_code,
     "timestamp": raw.timestamp,
 })
-# 回答只用于判断 R2/R3, 用完即丢, 不写进输出表
+# Answers are used only for R2/R3 and then dropped; they never reach the output table
 resp_a = raw.conversation_a.map(lambda c: first(c, "assistant")).str.strip()
 resp_b = raw.conversation_b.map(lambda c: first(c, "assistant")).str.strip()
 del raw
 
 rules = {
-    "R1 首条消息 < 16 字符": df.prompt.str.strip().str.len() < MIN_PROMPT_CHARS,
-    "R2 有一侧回答为空": (resp_a == "") | (resp_b == ""),
-    "R3 回答被服务商内容过滤截断": resp_a.str.contains(FILTER_MSG, regex=False)
+    "R1 first message < 16 chars": df.prompt.str.strip().str.len() < MIN_PROMPT_CHARS,
+    "R2 an answer is empty": (resp_a == "") | (resp_b == ""),
+    "R3 answer cut by provider content filter": resp_a.str.contains(FILTER_MSG, regex=False)
                                    | resp_b.str.contains(FILTER_MSG, regex=False),
 }
 
 
 def clean(part: pd.DataFrame, name: str):
-    """按顺序套规则, 返回 (清洗后表, 每条规则的删除记录)。"""
-    log = [("起始", len(part), 0)]
+    """Apply the rules in order; return (cleaned table, rows removed per rule)."""
+    log = [("start", len(part), 0)]
     keep = part
     for rule, mask in rules.items():
         drop = mask.loc[keep.index]
         keep = keep[~drop]
         log.append((rule, len(keep), int(drop.sum())))
-    # R4: 同 prompt + 同 (model_a, model_b) 只留最早一条
+    # R4: same prompt + same (model_a, model_b) keeps only the earliest row
     keep = keep.sort_values("timestamp")
     dup = keep.duplicated(["prompt", "model_a", "model_b"], keep="first")
     keep = keep[~dup].sort_index()
-    log.append(("R4 完全重复的 prompt+model_a+model_b", len(keep), int(dup.sum())))
-    return keep, pd.DataFrame(log, columns=[f"{name}: 规则", "剩余行数", "本条删除"])
+    log.append(("R4 exact duplicate prompt+model_a+model_b", len(keep), int(dup.sum())))
+    return keep, pd.DataFrame(log, columns=[f"{name}: rule", "rows left", "removed"])
 
 
-main, log_main = clean(df[df.evaluation_order == 1], "主数据 order=1")
-follow, log_follow = clean(df[df.evaluation_order > 1], "追问票 order>1")
+main, log_main = clean(df[df.evaluation_order == 1], "main data order=1")
+follow, log_follow = clean(df[df.evaluation_order > 1], "follow-ups order>1")
 
 
 def lang_detect(s):
     try:
         return detect(s)
-    except LangDetectException:  # 纯数字/符号等无法判断
+    except LangDetectException:  # digits / symbols only, cannot be detected
         return "und"
 
 
@@ -124,27 +127,27 @@ for part in (main, follow):
 main.to_parquet(root / "data/arena_clean.parquet", index=False)
 follow.to_parquet(root / "data/arena_followup_clean.parquet", index=False)
 
-# ---------- 报告 ----------
+# ---------- report ----------
 agree = (main.language == main.langdetect_lang)
 known = main.language != "und"
-lang_tab = main.language.value_counts().head(10).to_frame("行数")
-lang_tab["占比"] = (lang_tab["行数"] / len(main)).round(3)
-win_tab = main.winner.value_counts().to_frame("行数")
-win_tab["占比"] = (win_tab["行数"] / len(main)).round(3)
+lang_tab = main.language.value_counts().head(10).to_frame("rows")
+lang_tab["share"] = (lang_tab["rows"] / len(main)).round(3)
+win_tab = main.winner.value_counts().to_frame("rows")
+win_tab["share"] = (win_tab["rows"] / len(main)).round(3)
 pl_week = (main.assign(week=main.timestamp.dt.to_period("W").astype(str), pl=main.language == "pl")
            .groupby("week").pl.mean().round(3))
 
 md = [
-    "# Step 1 清洗结果", "",
-    f"原始 {len(df)} 行 = order=1 {int((df.evaluation_order == 1).sum())} 行 + 追问票 {int((df.evaluation_order > 1).sum())} 行 (追问票单独存)。", "",
+    "# Step 1 cleaning results", "",
+    f"Raw {len(df)} rows = order=1 {int((df.evaluation_order == 1).sum())} rows + follow-ups {int((df.evaluation_order > 1).sum())} rows (follow-ups stored separately).", "",
     log_main.to_markdown(index=False), "", log_follow.to_markdown(index=False), "",
-    "## 主数据 winner 分布", "", win_tab.to_markdown(), "",
-    "## 主数据语言前 10 (自带 language)", "", lang_tab.to_markdown(), "",
-    f"英文 is_en: {main.is_en.sum()} 行 ({main.is_en.mean():.1%})",
-    f"自带 language 与 langdetect 一致率: 全部 {agree.mean():.1%}; 去掉自带标记为 und 的行 {agree[known].mean():.1%}",
-    f"英文行一致率: {agree[main.language == 'en'].mean():.1%}", "",
-    "## 波兰语占比按周", "", pl_week.to_frame("pl 占比").to_markdown(), "",
-    "## 主数据首条消息长度 (字符)", "",
+    "## Main data: winner distribution", "", win_tab.to_markdown(), "",
+    "## Main data: top 10 languages (dataset's own tag)", "", lang_tab.to_markdown(), "",
+    f"English is_en: {main.is_en.sum()} rows ({main.is_en.mean():.1%})",
+    f"Agreement of dataset language tag with langdetect: all rows {agree.mean():.1%}; excluding rows tagged und {agree[known].mean():.1%}",
+    f"Agreement on English rows: {agree[main.language == 'en'].mean():.1%}", "",
+    "## Share of Polish by week", "", pl_week.to_frame("pl share").to_markdown(), "",
+    "## Main data: first message length (characters)", "",
     main.prompt_len.describe(percentiles=[.1, .25, .5, .75, .9, .99]).round(0).to_frame("chars").to_markdown(),
 ]
 (root / "reports/step1_cleaning.md").write_text("\n".join(md))

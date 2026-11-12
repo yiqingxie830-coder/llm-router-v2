@@ -1,14 +1,16 @@
-"""overhead_bench.py — 推理开销实测: 每种路由器处理一条请求要多花多少时间 (云端 4 核 CPU, 无 GPU)
+"""overhead_bench.py — measured inference overhead: how much time each router adds per request (cloud container, 4 CPU cores, no GPU)
 
-测什么:
-  1. prompt 向量 (multilingual-e5-large, ONNX/fastembed, 4 线程, 截断 512 token):
-     a) 单条请求延迟 (batch = 1, 逐条算), 用口径 ② 的 200 条随机 prompt (种子 2026), 长度分布和真实请求一致;
-     b) 吞吐 (batch = 32), 用来折算每千次请求的算力成本。
-  2. 路由头: R1 (逻辑回归: 1024+55 维点积) 与 R2 (MF: 1024×128 矩阵乘 + 两个模型向量内积), numpy 单条计时。
-  3. 基线 (评分差 ÷ 价格差): 查表, 视为 0。
-R3 (Haiku 打标) 的开销来自 r3/pilot_summary.md 的实测, 不在这里测。
-用法: python -I overhead_bench.py <v2 根目录> <fastembed 缓存目录>
-产出: reports/overhead_bench.json
+What is measured:
+  1. Prompt vector (multilingual-e5-large, ONNX/fastembed, 4 threads, truncated at 512 tokens):
+     a) single-request latency (batch = 1, one at a time), on 200 random view-② prompts (seed 2026), whose length
+        distribution matches real requests;
+     b) throughput (batch = 32), to convert into compute cost per 1,000 requests.
+  2. Router heads: R1 (logistic regression: a 1024+55-dim dot product) and R2 (MF: a 1024×128 matrix product + two
+     model-vector dot products), timed per request in numpy.
+  3. Baseline (rating gap ÷ price gap): a table lookup, counted as 0.
+R3's overhead (Haiku labeling) comes from the measurements in r3/pilot_summary.md and is not measured here.
+Usage: python -I overhead_bench.py <repo root> <fastembed cache directory>
+Writes: reports/overhead_bench.json
 """
 import json
 import sys
@@ -26,7 +28,7 @@ from fastembed import TextEmbedding  # noqa: E402
 m = TextEmbedding("intfloat/multilingual-e5-large", cache_dir=cache, threads=4)
 m.model.tokenizer.enable_truncation(512)
 ntok = [len(m.model.tokenizer.encode(t).ids) for t in texts]
-list(m.embed(texts[:5], batch_size=1))   # 预热
+list(m.embed(texts[:5], batch_size=1))   # warm-up
 lat = []
 for t in texts:
     s = time.perf_counter()
@@ -60,7 +62,7 @@ def timeit(f, n=20000):
     return (time.perf_counter() - s) / n
 
 
-out = {"cpu": "云端容器 4 核 (fastembed threads=4)", "n_prompts": len(texts),
+out = {"cpu": "cloud container, 4 cores (fastembed threads=4)", "n_prompts": len(texts),
        "tokens_median": float(np.median(ntok)), "tokens_mean": float(np.mean(ntok)), "tokens_max": int(max(ntok)),
        "embed_latency_ms_p50": 1000 * float(np.percentile(lat, 50)), "embed_latency_ms_p90": 1000 * float(np.percentile(lat, 90)),
        "embed_latency_ms_p99": 1000 * float(np.percentile(lat, 99)), "embed_latency_ms_mean": 1000 * float(np.mean(lat)),

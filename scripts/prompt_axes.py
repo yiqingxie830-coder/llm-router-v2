@@ -1,14 +1,17 @@
-"""prompt_axes.py — 把开发集 prompt 投到 R2 模型向量图的 PC1 / PC2 轴上, 用来给两轴命名并检验 PC1 是否是"难度"
+"""prompt_axes.py — project dev-set prompts onto the PC1 / PC2 axes of the R2 model-vector plot, to name the two axes and test whether PC1 is "difficulty"
 
-轴的定义 (和 plot_r2_vectors.py 同一套 PCA):
-  模型 m 随 prompt 变化的适合度 = g_m · (z_q − z̄) = g_w,m · ẑ_q,  g_w = Σ^(1/2) g,  ẑ_q = Σ^(−1/2) (z_q − z̄)
-  PC k 方向 V_k (白化空间), 模型坐标 = g_w,m · V_k, prompt 坐标 t_k(q) = V_k · ẑ_q (在开发集 prompt 上方差为 1)
-  所以 t_k(q) 高的 prompt 给 PC k 坐标高的模型加分。图上强档在 PC1 负端, 所以 t1 高 → 强弱差距缩小, t1 低 → 强档更占优。
-折外版本: 每个 cv 折只用 train 票训练同设置模型、自己做 PCA (符号按和最终模型的模型坐标相关性对齐), 再给该折 eval 票的 prompt 打 t1,
-  用来检查 "t1 两端胜率不同" 不是训练集内的过拟合。只用开发集; 测试集不参与。
+Axis definition (the same PCA as plot_r2_vectors.py):
+  prompt-dependent fit of model m = g_m · (z_q − z̄) = g_w,m · ẑ_q,  g_w = Σ^(1/2) g,  ẑ_q = Σ^(−1/2) (z_q − z̄)
+  PC k direction V_k (whitened space), model coordinate = g_w,m · V_k, prompt coordinate t_k(q) = V_k · ẑ_q (variance 1 over dev prompts)
+  So a prompt with high t_k(q) favours models with a high PC k coordinate. In the plot the strong tier sits at the
+  negative end of PC1, so high t1 -> the strong-weak gap narrows, low t1 -> the strong tier has more of an edge.
+Out-of-fold version: each cv fold trains a model with the same settings on its train votes only, runs its own PCA
+  (sign aligned by correlation of model coordinates with the final model), then scores t1 for the prompts of that
+  fold's eval votes; this checks that "different win rates at the two ends of t1" is not in-sample overfitting.
+  Dev set only; the test set is not used.
 
-用法: python -I prompt_axes.py <v2 根目录> <原始 140k 目录>
-产出: data/r2_prompt_axes.parquet, reports/r2_prompt_axes.md
+Usage: python -I prompt_axes.py <repo root> <raw 140k directory>
+Writes: data/r2_prompt_axes.parquet, reports/r2_model_vectors_pca3.csv
 """
 import glob
 import sys
@@ -31,7 +34,7 @@ fl, E, gpos, names = ns["fl"], np.asarray(ns["E"]), ns["gpos"], ns["models"]
 
 
 def axes(P, groups, train_votes):
-    """返回 (模型 PC 坐标 DataFrame, 函数: group_id 数组 → t1,t2,t3)。PCA 只用训练票数 ≥ MIN_VOTES 的模型。"""
+    """Return (DataFrame of model PC coordinates, function: group_id array -> t1,t2,t3, variance ratios). PCA uses only models with ≥ MIN_VOTES training votes."""
     g = np.asarray(P["v"]) * np.asarray(P["w2"])
     Z = E[gpos.loc[groups].values] @ np.asarray(P["W"], dtype=np.float64) + np.asarray(P["b"])
     zbar = Z.mean(0)
@@ -49,13 +52,13 @@ def axes(P, groups, train_votes):
     return coords, proj, S ** 2 / (S ** 2).sum()
 
 
-# ---- 最终模型 (整个开发集 90%) ----
+# ---- final model (the full 90% dev set) ----
 P = dict(np.load(root / "data/r2_final_params.npz"))
 dev = fl[(fl.context == "final") & (fl.role == "train")]
 groups = dev.group_id.unique()
 coords, proj, ratio = axes(P, groups, dev)
 ref = pd.read_csv(root / "reports/r2_model_vectors_pca.csv").set_index("model")
-for k in ["PC1", "PC2"]:   # SVD 符号与画图脚本一致 (同一输入); 不一致就翻转
+for k in ["PC1", "PC2"]:   # SVD signs should match the plotting script (same input); flip if not
     if np.corrcoef(coords.loc[ref.index, k], ref[k])[0, 1] < 0:
         coords[k] *= -1
         flip = {"PC1": 0, "PC2": 1}[k]
@@ -65,7 +68,7 @@ assert np.allclose(coords.loc[ref.index, ["PC1", "PC2"]].values, ref[["PC1", "PC
 T = proj(groups)
 pa = pd.DataFrame({"group_id": groups, "t1": T[:, 0], "t2": T[:, 1], "t3": T[:, 2]})
 
-# ---- prompt 属性: 原文、长度、语言、代码; Arena 自带的 LLM 标签 (category_tag) ----
+# ---- prompt attributes: text, length, language, code; Arena's own LLM tags (category_tag) ----
 lab = pd.read_parquet(root / "data/arena_labeled.parquet",
                       columns=["id", "group_id", "prompt", "language", "is_code", "prompt_len", "split"])
 lab = lab[lab.split != "test"].drop_duplicates("group_id")
@@ -84,7 +87,7 @@ pa = pa.merge(lab.drop(columns="split"), on="group_id", how="left")
 assert pa.prompt.notna().all()
 
 
-# ---- 折外 t1: 每折只用 train 票训练, 给 eval 票的 prompt 打分 ----
+# ---- out-of-fold t1: each fold trains on its train votes only and scores its eval prompts ----
 oof = []
 for k in range(5):
     d = fl[fl.context == f"cv{k}"]
@@ -97,7 +100,7 @@ for k in range(5):
     sign = np.sign(r[0])
     eg = ev.group_id.unique()
     oof.append(pd.DataFrame({"group_id": eg, "t1_oof": projk(eg)[:, 0] * sign, "fold_r": abs(r[0])}))
-    print(f"cv{k} 折内 PC1 与最终 PC1 的模型坐标相关", np.round(r, 3), flush=True)
+    print(f"cv{k} correlation of fold PC1..3 model coordinates with final PC1", np.round(r, 3), flush=True)
 oof = pd.concat(oof)
 pa = pa.merge(oof, on="group_id", how="left")
 pa.to_parquet(root / "data/r2_prompt_axes.parquet", index=False)

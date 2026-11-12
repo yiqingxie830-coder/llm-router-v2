@@ -1,12 +1,13 @@
-"""r3_export.py — 导出 R3 打标范围: 口径 ② (固定名单强弱档对战) 的全部不同 prompt, 及 50 条试打样本
+"""r3_export.py — export the R3 labeling scope: every distinct prompt in view ② (fixed-list strong-vs-weak votes), plus a 50-prompt pilot sample
 
-范围 (Yiqing 2026-11-10 定): 口径 ② 9,332 票 (开发 8,333 + 测试 999) 去重后 9,247 个 prompt。
-测试集 prompt 只打标签, 不做任何评估; 标签之后只在 --final 时用一次。
-prompt = 第一轮用户消息原文 (和 embedding 用的同一列); 语言列沿用 Step 1 的 langdetect 结果, 不交给 Haiku 判断。
-试打样本: 只从开发集 prompt 里简单随机抽 50 条 (种子 2026), 用来无偏估计每条的平均 token 和费用。
+Scope (set 2026-11-10): view ② has 9,332 votes (dev 8,333 + test 999), 9,247 distinct prompts.
+Test-set prompts are only labeled, never evaluated; their labels were used once, at --final.
+prompt = the raw first user message (the same column the embedding uses); the language column reuses Step 1's
+langdetect result and is not left to Haiku.
+Pilot sample: a simple random sample of 50 dev-set prompts (seed 2026), for an unbiased estimate of tokens and cost per prompt.
 
-用法: python -I r3_export.py <v2 根目录>
-产出: r3/r3_prompts.jsonl (9,247 行), r3/pilot_50.jsonl, data/r3_prompts.parquet
+Usage: python -I r3_export.py <repo root>
+Writes: r3/r3_prompts.jsonl (9,247 rows), r3/pilot_50.jsonl, data/r3_prompts.parquet
 """
 import json
 import sys
@@ -34,5 +35,5 @@ pilot = g[g.split == "dev"].sample(50, random_state=2026)
 with open(out / "pilot_50.jsonl", "w") as f:
     for r in pilot[cols].to_dict("records"):
         f.write(json.dumps(r, ensure_ascii=False) + "\n")
-print(len(g), g.split.value_counts().to_dict(), "试打长度中位/最大", pilot.prompt_len.median(), pilot.prompt_len.max(),
-      "全量长度中位", g.prompt_len.median())
+print(len(g), g.split.value_counts().to_dict(), "pilot length median/max", pilot.prompt_len.median(), pilot.prompt_len.max(),
+      "full-set length median", g.prompt_len.median())

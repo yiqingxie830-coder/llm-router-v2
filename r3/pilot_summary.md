@@ -1,20 +1,20 @@
-# R3 试打 50 条: 费用与一致性
+# R3 pilot on 50 prompts: cost and agreement
 
-模型 claude-haiku-5-5; 单价 输入 $0.10 / 输出 $0.50 每百万 token; 结构化输出 (JSON schema)。
-输出 token 含思考 token (思考按输出计费)。全量外推 = 每条平均费用 × 9,247; 输入长度按 50 条的 字符→token 线性关系校正到全量平均长度。
+Model claude-haiku-5-5; price input $0.10 / output $0.50 per million tokens; structured outputs (JSON schema).
+Output tokens include thinking tokens (thinking is billed as output). Full-run extrapolation = mean cost per prompt × 9,247; input length is adjusted to the full-set mean length with the chars→tokens linear fit from the 50 prompts.
 
-| 设置 | 成功 | 失败/拒答 | 平均输入 token | 平均输出 token (P90) | 每条费用 | 全量 9,247 条 (标准) | 全量 (Batch 五折) | 延迟 P50 / P90 (秒) |
+| Setting | OK | Failed/refused | Mean input tokens | Mean output tokens (P90) | Cost per prompt | All 9,247 (standard) | All (Batch, half price) | Latency P50 / P90 (s) |
 |---|---|---|---|---|---|---|---|---|
 | A_think_low | 50 | 0 | 1831 | 92 (73) | $0.00023 | $2.12 | $1.06 | 1.1 / 2.4 |
 | B_no_think | 50 | 0 | 1830 | 66 (68) | $0.00022 | $1.99 | $1.00 | 1.1 / 1.4 |
 
-失败或拒答的调用:
+Failed or refused calls:
 
-- 无
+- none
 
-## 两种设置的一致率 (50 条都成功)
+## Agreement between the two settings (50 prompts where both succeeded)
 
-| 字段 | 完全一致 | 相差 ≤ 1 |
+| Field | Exact match | Within 1 |
 |---|---|---|
 | task_type | 94% |  |
 | has_single_answer | 82% | 98% |
@@ -24,7 +24,9 @@
 | difficulty | 78% | 100% |
 | expected_length | 78% | 100% |
 
-## 设置 A 的前 10 条标签 (人工抽查用)
+## First 10 labels from setting A (for manual spot checks)
+
+The prompts are quoted from the dataset (CC-BY-4.0) in their original languages.
 
 - `{"task_type": "chitchat", "has_single_answer": 0, "is_open_ended": 0, "is_creative": 1, "has_format_constraint": 1, "difficulty": 0, "expected_length": 0}`  zgraj ze mną w grę, podam Ci nazwę kraju, a Ty podaj mi nazwę innego kraju na ostanią literę kraju który podam, następnie ja podam nazwę kraju na ostatnią liter
 - `{"task_type": "advice", "has_single_answer": 0, "is_open_ended": 3, "is_creative": 2, "has_format_constraint": 1, "difficulty": 2, "expected_length": 1}`  Give me a truly unique web app idea for an MVP I can build with lovable in 6 weeks, that would get traction and paid users fast because there is a real need and

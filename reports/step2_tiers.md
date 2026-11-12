@@ -1,16 +1,16 @@
-# Step 2 分档候选 (k=5 一维 k-means, 评分来自本数据 Bradley-Terry)
+# Step 2 tier candidates (k=5 one-dimensional k-means, ratings from Bradley-Terry on this data)
 
-评分刻度: 平均 1000; 差 100 分 ≈ 高分方胜率 64%, 差 175 分 ≈ 73%。区间 = 200 次 bootstrap 95%。
+Rating scale: mean 1000; a 100-point gap ≈ 64% win rate for the higher-rated model, 175 points ≈ 73%. Intervals = 95% from 200 bootstrap resamples.
 
-出场 < 300 次的模型不参与分档 (评分区间太宽): qwen3-coder-480b (1 次), gemini-2.0-flash-thinking-exp (286 次)。
+Models with < 300 appearances are left out of tiering (rating interval too wide): qwen3-coder-480b (1 appearance), gemini-2.0-flash-thinking-exp (286).
 
-## 层 1 (评分 1137–1137, 1 个模型)
+## Layer 1 (ratings 1137–1137, 1 model)
 
 | model          |   rating |   ci_low |   ci_high |   n_games |
 |:---------------|---------:|---------:|----------:|----------:|
 | gemini-2.5-pro |   1136.8 |   1127.8 |      1144 |      6862 |
 
-## 层 2 (评分 1065–1104, 9 个模型)
+## Layer 2 (ratings 1065–1104, 9 models)
 
 | model                               |   rating |   ci_low |   ci_high |   n_games |
 |:------------------------------------|---------:|---------:|----------:|----------:|
@@ -24,7 +24,7 @@
 | gemini-2.5-flash                    |   1069.8 |   1062.2 |    1078.2 |      7199 |
 | llama-4-maverick-03-26-experimental |   1064.8 |   1056.5 |    1073.7 |      4364 |
 
-## 层 3 (评分 1002–1043, 19 个模型)
+## Layer 3 (ratings 1002–1043, 19 models)
 
 | model                                        |   rating |   ci_low |   ci_high |   n_games |
 |:---------------------------------------------|---------:|---------:|----------:|----------:|
@@ -48,7 +48,7 @@
 | claude-opus-4-20250514-thinking-16k          |   1002.4 |    994.7 |    1011   |      4593 |
 | grok-3-mini-high                             |   1002.1 |    990.6 |    1015.1 |      2086 |
 
-## 层 4 (评分 960–998, 13 个模型)
+## Layer 4 (ratings 960–998, 13 models)
 
 | model                                 |   rating |   ci_low |   ci_high |   n_games |
 |:--------------------------------------|---------:|---------:|----------:|----------:|
@@ -66,7 +66,7 @@
 | gemma-3n-e4b-it                       |    961.2 |    948.3 |     975.7 |      1947 |
 | amazon-nova-experimental-chat-05-14   |    960.3 |    949.2 |     971   |      2347 |
 
-## 层 5 (评分 882–930, 11 个模型)
+## Layer 5 (ratings 882–930, 11 models)
 
 | model                                   |   rating |   ci_low |   ci_high |   n_games |
 |:----------------------------------------|---------:|---------:|----------:|----------:|
@@ -82,13 +82,13 @@
 | magistral-medium-2506                   |    885.7 |    872.5 |     896.2 |      1779 |
 | gpt-4o-mini-2024-07-18                  |    882.1 |    851.3 |     912.4 |       444 |
 
-## 候选方案 (只算出场 ≥300 次的模型)
+## Candidate schemes (only models with ≥ 300 appearances)
 
-| 方案 | 强档 | 弱档 | 对战数 | 强胜 | 弱胜 | 平局 | 非平局中强胜 | 平均分差 |
+| Scheme | Strong tier | Weak tier | Battles | Strong wins | Weak wins | Ties | Strong wins among non-ties | Mean gap |
 |---|---|---|---|---|---|---|---|---|
-| A | 层1-2 (10) | 层5 (11) | 9,332 | 61.6% | 17.4% | 21.1% | 78.0% | 175 |
-| B | 层1-2 (10) | 层4-5 (24) | 21,081 | 56.7% | 20.1% | 23.2% | 73.9% | 138 |
-| C | 层1-2 (10) | 层3 (17) | 14,857 | 45.4% | 26.8% | 27.8% | 62.9% | 63 |
-| D | 层1-3 (27) | 层5 (11) | 22,881 | 56.3% | 20.1% | 23.7% | 73.7% | 138 |
+| A | layers 1-2 (10) | layer 5 (11) | 9,332 | 61.6% | 17.4% | 21.1% | 78.0% | 175 |
+| B | layers 1-2 (10) | layers 4-5 (24) | 21,081 | 56.7% | 20.1% | 23.2% | 73.9% | 138 |
+| C | layers 1-2 (10) | layer 3 (17) | 14,857 | 45.4% | 26.8% | 27.8% | 62.9% | 63 |
+| D | layers 1-3 (27) | layer 5 (11) | 22,881 | 56.3% | 20.1% | 23.7% | 73.7% | 138 |
 
-k=6 时层 1-2 与层 6 的划分和方案 A 完全相同, 说明 A 的边界对 k 的选择不敏感。
+With k=6, layers 1-2 and layer 6 split exactly as in scheme A, so A's boundaries are not sensitive to the choice of k.

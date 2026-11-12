@@ -1,9 +1,9 @@
-# R2 (MF) 超参扫描与嵌套选择
+# R2 (MF) hyperparameter sweep and nested selection
 
-网格: d ∈ [16, 64, 128] (另补 d = 256, 只跑学习率 1e-3), 学习率 ∈ [0.001, 0.003], λ ∈ [1e-06, 1e-05, 0.0001] (共 21 组); 批大小 1024, Adam, 早停耐心 3 轮, 最多 30 轮。
-内层验证 = 每个外层折 train 票按 prompt 组哈希切出的 20%。APGR 列是外层 eval 票的点估计, 只用来看敏感性, 不参与选择。
+Grid: d ∈ [16, 64, 128] (plus d = 256, learning rate 1e-3 only), learning rate ∈ [0.001, 0.003], λ ∈ [1e-06, 1e-05, 0.0001] (21 combinations); batch size 1024, Adam, early-stopping patience 3 epochs, at most 30.
+Inner validation = the 20% of each outer fold's train votes split off by prompt-group hash. APGR columns are point estimates on the outer eval votes, for sensitivity only, not used in selection.
 
-| d | 学习率 | λ | 内层验证损失 (5 折平均) | 早停轮数 (5 折) | 每折耗时 (秒, 均值) | 强弱档 APGR | 主案例 APGR$ | 主案例 CPT$(50%) |
+| d | Learning rate | λ | Inner validation loss (5-fold mean) | Early-stop epochs (5 folds) | Seconds per fold (mean) | Strong vs weak APGR | Main case APGR$ | Main case CPT$(50%) |
 |---|---|---|---|---|---|---|---|---|
 | 16 | 0.001 | 1e-06 | 1.0350 | 20/18/20/19/19 | 41 | 0.589 | 0.625 | 0.32 |
 | 16 | 0.001 | 1e-05 | 1.0346 | 24/19/20/22/21 | 34 | 0.591 | 0.627 | 0.31 |
@@ -26,6 +26,6 @@
 | 256 | 0.001 | 1e-06 | 1.0356 | 8/9/8/10/7 | 35 | 0.587 | 0.630 | 0.31 |
 | 256 | 0.001 | 1e-05 | 1.0342 | 11/13/10/13/11 | 38 | 0.589 | 0.629 | 0.31 |
 | 256 | 0.001 | 0.0001 | 1.0406 | 30/12/13/30/12 | 44 | 0.547 | 0.626 | 0.33 |
-| **嵌套选择** | | | | | | **0.590** | **0.629** | **0.31** |
+| **nested selection** | | | | | | **0.590** | **0.629** | **0.31** |
 
-各折选中: cv0 → d=128, lr=0.001, λ=1e-05, 15 轮; cv1 → d=256, lr=0.001, λ=1e-05, 13 轮; cv2 → d=128, lr=0.001, λ=1e-05, 14 轮; cv3 → d=128, lr=0.001, λ=1e-05, 14 轮; cv4 → d=128, lr=0.001, λ=1e-06, 11 轮
+Chosen per fold: cv0 → d=128, lr=0.001, λ=1e-05, 15 epochs; cv1 → d=256, lr=0.001, λ=1e-05, 13 epochs; cv2 → d=128, lr=0.001, λ=1e-05, 14 epochs; cv3 → d=128, lr=0.001, λ=1e-05, 14 epochs; cv4 → d=128, lr=0.001, λ=1e-06, 11 epochs

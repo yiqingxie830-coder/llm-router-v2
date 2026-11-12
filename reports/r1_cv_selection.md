@@ -1,6 +1,6 @@
-# R1 正则强度选择 (开发集 5 折, eval 票, 不加权的对数损失 / AUC)
+# R1 regularization choice (dev set 5-fold, eval votes, unweighted log loss / AUC)
 
-| 版本 | C | 对数损失 | AUC |
+| Version | C | Log loss | AUC |
 |---|---|---|---|
 | gap | 1.0 | 0.6796 | 0.5844 |
 | gap+id | 0.01 | 0.6794 | 0.5851 |
@@ -12,4 +12,4 @@
 | gap+id+e | 0.1 | 0.6747 | 0.5995 |
 | gap+id+e | 1.0 | 0.6762 | 0.5966 |
 
-选定: gap → C=1.0, gap+id → C=0.01, gap+id+e → C=0.1
+Chosen: gap → C=1.0, gap+id → C=0.01, gap+id+e → C=0.1

@@ -1,76 +1,76 @@
-# 阶段 2 · Step 1：价格表与美元成本轴
+# Stage 2 · Step 1: price table and the dollar cost axis
 
-**一句话结论：** 换成真实价格后，有三分之一的票里评分更高的模型反而更便宜，这些票不需要路由。在剩下的「强的更贵」的票里，只看评分差的基线在强弱档主案例里退化成随机（APGR$ 0.498）；按「评分差 ÷ 价格差」排序，不看 prompt 也能做到 0.623，所以把它定为美元口径的正式基线。
+**In one sentence:** with real prices, in a third of the votes the higher-rated model is actually cheaper, and those votes need no routing. Among the remaining "the stronger one costs more" votes, the rating-gap-only baseline falls to random in the strong-vs-weak main case (APGR$ 0.498); ranking by "rating gap ÷ price gap" reaches 0.623 without reading the prompt, so it becomes the formal baseline on the dollar axis.
 
-## 1. 价格表（data/model_prices.csv）
-- 用第一方官方 API 标价（美元 / 百万 token，标准档，不含缓存和批量折扣）。开源模型没有第一方价时，Llama 统一按 AWS Bedrock 算，其余按 LiteLLM 收录的托管商价格算。
-- 核对情况：28 个对上 LiteLLM 公开价格库，18 个对上官方公告或二手来源，1 个没能核实（qwen3-235b-instruct-2507，按同系列价格估算），6 个没有价格（4 个实验版 + 2 个票数很少的模型），这些不进美元口径。
-- o3 在 2025-06-10 降价 80%，所以按投票日期取价（降价前是 10/40，之后是 2/8）。
-- OpenRouter 现在的列表里已经没有这批 2025 年的模型，Wayback 存档也连不上，所以没法用它交叉核对。
+## 1. Price table (data/model_prices.csv)
+- First-party official API list prices (USD per million tokens, standard tier, no cache or batch discounts). For open models without a first-party price, Llama uses AWS Bedrock throughout and the others use the hosted prices listed by LiteLLM.
+- Checks: 28 match LiteLLM's public price list, 18 match official announcements or secondary sources, 1 could not be verified (qwen3-235b-instruct-2507, estimated from the same family's price), 6 have no price (4 experimental versions + 2 models with very few votes) and stay out of the dollar view.
+- o3 cut its price by 80% on 2025-06-10, so its price follows the vote date (10/40 before, 2/8 after).
+- OpenRouter's current list no longer includes these 2025 models and the Wayback archive was unreachable, so it could not be used as a cross-check.
 
-## 2. 每票成本
-- 每票每一侧的成本 = 输入价 × 上下文 token 数 + 输出价 × 回答 token 数。token 数来自原始数据的 conv_metadata，这只用来算账，不会当成路由特征。
-- 「哪一方更贵」按模型来定：取开发集中这个模型单次请求成本的中位数（data/model_cost.csv），不按单票来定，避免筛选条件用到回答长度这个未来信息。
-- **局限：** 推理模型（o3、R1、带 thinking 的版本）的隐藏思考 token 不在数据里，所以它们的成本被低估了。这些模型大多在高分方，所以「高分方更便宜」的比例可能被高估了。
+## 2. Cost per vote
+- Cost of each side of a vote = input price × context tokens + output price × answer tokens. Token counts come from the raw data's conv_metadata; this is bookkeeping only and never a routing feature.
+- "Which side costs more" is decided per model: the median cost per request of that model in the dev set (data/model_cost.csv), not per vote, so the filter never uses answer length, which is future information.
+- **Limitation:** hidden thinking tokens of reasoning models (o3, R1, thinking variants) are not in the data, so their cost is understated. Most of these models are on the higher-rated side, so the share where "the higher-rated model is cheaper" may be overstated.
 
-## 3. 票数统计（开发集 90,923 票，reports/stage2_step1_cost_views.md）
-| 口径 | 高分方更贵（进曲线） | 高分方更便宜或一样（无需路由） | 无价 |
+## 3. Vote counts (90,923 dev votes, reports/stage2_step1_cost_views.md)
+| View | Higher-rated costs more (enters the curves) | Higher-rated costs less or same (no routing needed) | No price |
 |---|---|---|---|
-| ① 全部 | 57.0% | **33.1%** | 9.9% |
-| ① 评分差 < 50 | 50.7% | 38.7% | 10.6% |
-| ① 评分差 50–150 | 56.4% | 33.5% | 10.1% |
-| ① 评分差 > 150 | 86.6% | 7.2% | 6.2% |
-| ② 强档 vs 弱档 | 82.3% | 8.3% | 9.4% |
+| ① all | 57.0% | **33.1%** | 9.9% |
+| ① rating gap < 50 | 50.7% | 38.7% | 10.6% |
+| ① rating gap 50–150 | 56.4% | 33.5% | 10.1% |
+| ① rating gap > 150 | 86.6% | 7.2% | 6.2% |
+| ② strong vs weak | 82.3% | 8.3% | 9.4% |
 
-「便宜模型更优」最常见的组合是 gemini-2.5-flash、qwen3-235b、mistral-medium 这些便宜模型对上 Claude Opus 4 和 Sonnet 4。在这批用户的偏好里，评分更高的一方单次成本只有对手的 1/2 到 1/70。
+The most common "the cheap model is better" pairs are cheap models such as gemini-2.5-flash, qwen3-235b and mistral-medium against Claude Opus 4 and Sonnet 4. In these users' preferences, the higher-rated side costs only 1/2 to 1/70 of its opponent per request.
 
-**② 美元主案例：** 9 个强档模型对 11 个弱档模型，共 6,855 票。强档的单次成本是弱档的 1.9 / 6.1 / 33 倍（P10 / 中位 / P90）；每千次请求多花 1.39 / 10.99 / 18.92 美元。
+**② main dollar case:** 9 strong-tier models against 11 weak-tier models, 6,855 votes. The strong tier costs 1.9 / 6.1 / 33 times the weak tier per request (P10 / median / P90), i.e. 1.39 / 10.99 / 18.92 dollars more per 1,000 requests.
 
-## 4. 美元横轴的基线（开发集 5 折，详表 reports/eval_demo_美元口径基线.md / .png）
+## 4. Baselines on the dollar axis (dev set 5-fold, details in reports/eval_demo_dollar_baselines.md / .png)
 
-**排序规则（Yiqing 2026-11-09 定）：** 在美元口径下，所有路由器统一按「预期质量提升 ÷ 增量成本」排序：
-- 排序值 = (2p − 1) ÷ max(典型成本差, 下限)。p 是路由器输出的 P(高分方赢)。发给高分方比发给低分方，预期多拿 p − (1 − p) = 2p − 1 分质量。
-- 典型成本差 = 高分方典型单次成本 − 低分方典型单次成本，按模型对来算，不用单票的回答长度。
-- **下限 = 每千次请求 0.25 美元**，大约是成本差的第 5 百分位，用来防止两个价格几乎一样的模型算出过大的比值。被下限截住的票，在合并口径里占 5.2%，在主案例里占 3.8%。
-- **正式基线 = 评分差 ÷ 价格差**，其中 p 用评分差推出的胜率。原来的评分差基线（只按 p 排序，不看价格）留在每张表里作对照行。
+**Ranking rule (set 2026-11-09):** on the dollar axis every router is ranked by "expected quality gain ÷ extra cost":
+- key = (2p − 1) ÷ max(typical cost gap, floor). p is the router's P(higher-rated wins). Routing to the higher-rated instead of the lower-rated model gains p − (1 − p) = 2p − 1 in expected quality.
+- Typical cost gap = typical cost per request of the higher-rated model − that of the lower-rated model, computed per model pair, without per-vote answer length.
+- **Floor = $0.25 per 1,000 requests**, about the 5th percentile of the cost gap, so two models with nearly equal prices do not produce a huge ratio. Votes clipped by the floor are 5.2% of the pooled view and 3.8% of the main case.
+- **Formal baseline = rating gap ÷ price gap**, with p the win rate implied by the rating gap. The old rating-gap baseline (ranks by p only, ignores price) stays in every table as a control row.
 
-| 口径 | 随机 | 评分差基线（对照） | **评分差 ÷ 价格差（正式基线）** | 对照：按调用比例的评分差 APGR |
+| View | Random | Rating-gap baseline (control) | **Rating gap ÷ price gap (formal baseline)** | For reference: rating-gap APGR on call share |
 |---|---|---|---|---|
-| ① 合并 | 0.489 | 0.642 | **0.768** [0.757, 0.778] | 0.665 |
+| ① pooled | 0.489 | 0.642 | **0.768** [0.757, 0.778] | 0.665 |
 | ① < 50 | 0.469 | 0.652 | **0.814** | 0.638 |
 | ① 50–150 | 0.495 | 0.596 | **0.753** | 0.576 |
 | ① > 150 | 0.489 | 0.497 | **0.613** | 0.531 |
-| ② 美元主案例 | 0.494 | 0.498 | **0.623** [0.608, 0.638] | 0.531 |
+| ② main dollar case | 0.494 | 0.498 | **0.623** [0.608, 0.638] | 0.531 |
 
-- 换成美元横轴后，评分差基线在评分差 > 150 的分桶和主案例里都退化成随机。原因是评分差越大的模型对，强模型通常也越贵。只按「谁更强」排序的话，钱会先花在最贵的那些对上。
-- 正式基线在所有口径里都比评分差基线高 0.12 到 0.16，95% 区间都不含 0。
+- On the dollar axis the rating-gap baseline falls to random in the > 150 bucket and in the main case. The reason: in pairs with a bigger rating gap, the strong model is usually also pricier. Ranking only by "which is stronger" spends money on the most expensive pairs first.
+- The formal baseline is 0.12 to 0.16 above the rating-gap baseline in every view, with 95% intervals excluding 0.
 
-**下限的敏感性（正式基线 APGR$ 点估计）：**
+**Sensitivity to the floor (formal baseline APGR$ point estimates):**
 
-| 口径 | 下限 $0.1/千次 | **$0.25/千次（采用）** | $1.0/千次 | 取对数：(2p−1) ÷ log(1 + 成本差/下限) |
+| View | floor $0.1/1k | **$0.25/1k (used)** | $1.0/1k | log: (2p−1) ÷ log(1 + cost gap/floor) |
 |---|---|---|---|---|
-| ① 合并 | 0.768 | 0.768 | 0.767 | 0.727 |
-| ② 美元主案例 | 0.623 | 0.623 | 0.623 | 0.621 |
+| ① pooled | 0.768 | 0.768 | 0.767 | 0.727 |
+| ② main dollar case | 0.623 | 0.623 | 0.623 | 0.621 |
 
-下限取 0.1 到 1.0 美元，结果几乎不变，所以不需要取对数。取对数会压低价格差的作用，合并口径反而降到 0.727。
+With the floor anywhere from $0.1 to $1.0 the result barely moves, so no log is needed. Taking the log dampens the price gap and actually lowers the pooled view to 0.727.
 
-**② 配对内 APGR$（美元主案例，衡量价格差固定时靠 prompt 排序的能力）：**
-- 做法：把票按模型对分组，只用票数不少于 30 的组（68 对，6,559 票）。每组内单独算 APGR$，再按票数加权平均。
-- 质量差距不到 0.05 的组算出来的 APGR 会失真，所以这类组在加权平均时跳过。另外同时报一个不会失真的合并版：各组曲线下的增益加总，除以各组质量差距的加总，相当于按「票数 × 质量差距」加权。
+**② within-pair APGR$ (main dollar case; measures ranking by prompt when the price gap is fixed):**
+- Method: group votes by model pair and use only groups with at least 30 votes (68 pairs, 6,559 votes). Compute APGR$ inside each group, then average weighted by votes.
+- Groups with a quality gap under 0.05 give distorted APGR, so they are skipped in the weighted mean. A pooled version that cannot be distorted is reported alongside: the sum of each group's area gain divided by the sum of the groups' quality gaps, i.e. weighted by votes × quality gap.
 
-| 路由器 | 按票数加权 | 合并版 |
+| Router | Vote-weighted | Pooled |
 |---|---|---|
-| 随机路由 | 0.519 [0.499, 0.536] | 0.517 [0.499, 0.531] |
-| 评分差基线（对照） | 0.497 [0.475, 0.514] | 0.496 [0.476, 0.510] |
-| 评分差 ÷ 价格差（正式基线） | 0.494 [0.474, 0.515] | 0.493 [0.476, 0.511] |
+| Random router | 0.519 [0.499, 0.536] | 0.517 [0.499, 0.531] |
+| Rating-gap baseline (control) | 0.497 [0.475, 0.514] | 0.496 [0.476, 0.510] |
+| Rating gap ÷ price gap (formal baseline) | 0.494 [0.474, 0.515] | 0.493 [0.476, 0.511] |
 
-组内的模型和价格都固定，评分差类基线只剩下不同折之间的评分抖动，所以三行都约等于 0.5。这符合预期，也说明这个指标确实只衡量「读 prompt」带来的部分。后面路由器在这一项上只要稳定高于 0.5，就说明它读懂了 prompt。
+Within a group the models and prices are fixed, so rating-gap baselines only keep cross-fold rating jitter, and all three rows are about 0.5. That is as expected, and shows the metric really measures only the part that comes from reading the prompt. A later router that sits steadily above 0.5 here has understood something about the prompt.
 
-## 5. 局限
-- **推理模型的隐藏思考 token 没有计入成本。** Arena 数据只记录用户看到的回答 token。o3、o3-mini、o4-mini、deepseek-r1、gemini-2.5-pro/flash（默认开思考）、qwen3-235b（思考版）、grok-3-mini、magistral 和各个 thinking 版 Claude 实际按输出价付费的 token 会更多，所以它们的成本被低估了。这些模型大多在高分方或强档，影响有三点：（1）「高分方更便宜」的 33% 可能偏高；（2）主案例里强档多花的钱可能偏低；（3）正式基线会稍微偏向发给推理模型。下一步可以做敏感性分析：给推理模型的输出 token 乘 2 到 5 倍再重算。
-- token 数是 Arena 用同一个分词器统计的，不是各家自己的分词器，各家之间可能差 10% 到 20%。
-- 价格是标价，没有算缓存、批量和夜间折扣。qwen3-235b-instruct-2507 的价格没能核实。
-- 「哪一方更贵」用的是开发集里的典型成本。测试集评估时沿用同一张表，不重新计算。
+## 5. Limitations
+- **Hidden thinking tokens of reasoning models are not counted.** Arena only records the answer tokens the user sees. o3, o3-mini, o4-mini, deepseek-r1, gemini-2.5-pro/flash (thinking on by default), qwen3-235b (thinking version), grok-3-mini, magistral and the thinking versions of Claude actually pay output prices for more tokens, so their cost is understated. Most of them are on the higher-rated side or in the strong tier, with three effects: (1) the 33% where "the higher-rated model is cheaper" may be too high; (2) the extra spend of the strong tier in the main case may be too low; (3) the formal baseline leans slightly towards sending to reasoning models. A next step could be a sensitivity analysis that multiplies reasoning models' output tokens by 2 to 5 and recomputes.
+- Token counts come from one Arena tokenizer, not each provider's own, which may differ by 10% to 20%.
+- Prices are list prices, without cache, batch or off-peak discounts. The price of qwen3-235b-instruct-2507 could not be verified.
+- "Which side costs more" uses typical costs from the dev set. The test-set evaluation reuses the same table without recomputing it.
 
-## 文件
-scripts/cost_table.py → scripts/cost_views.py → scripts/evaluate_cost.py；产出 data/vote_costs.parquet、data/model_cost.csv、data/model_prices.csv、reports/stage2_step1_*.md、reports/eval_demo_美元口径基线.*。
+## Files
+scripts/cost_table.py → scripts/cost_views.py → scripts/evaluate_cost.py; outputs data/vote_costs.parquet, data/model_cost.csv, data/model_prices.csv, reports/stage2_step1_*.md, reports/eval_demo_dollar_baselines.*.
