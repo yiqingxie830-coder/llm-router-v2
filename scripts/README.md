@@ -16,6 +16,15 @@ Run each script as `python -I scripts/<name>.py <repo root> [args]`; the header 
 | Approach 2 (R3) | `r3_export.py` → `r3/r3_label.py` (API) → `r3_train.py` → `r3_eval.py` | `reports/r3_dev_report.md` |
 | Overhead | `overhead_bench.py` | `reports/overhead_table.md` |
 
+Only the main write-ups are committed in `reports/`. The scripts also write these working files, which the committed reports sometimes cite by name:
+
+- step reports: `step0_raw_overview.md` (`inspect_raw.py`) through `step4_*` (`split.py`, `fold_ratings.py`, `plot_rank_rating.py`), `stage2_step1_cost_views.md` (`cost_views.py`)
+- per-router evaluation tables and curves `eval_<name>[_final].md/.png` (`evaluate.py`, `evaluate_cost.py`)
+- tuning logs: `r1_c_selection.md` (`r1_csweep.py`), `r2_sweep.md` (`r2_sweep.py`)
+- `r3_compare*.md` (`r3_eval.py`), `r2_pc1_english_check.md` (`prompt_axes_en.py`)
+
+A few hand-written working notes (R2 implementation, hyperparameter selection rounds) were removed from `reports/` to keep it short; they remain in the git history (commit 092369f).
+
 Scripts call each other by file name (for example `r2_final.py` loads `train_r2_mf.py`), so keep the names as they are. Running the pipeline rewrites the files in `reports/`.
 
 The test set is sealed. Scripts that take `--final` (R1, R2, R3, baselines, evaluation) were run on it twice under written pre-registrations (`reports/final_prereg.md`, `reports/r3_prereg.md`). The flag stays for transparency, not for new runs.

@@ -30,7 +30,8 @@ The largest gain is between models of similar strength (rating gap < 50: +0.13).
 
 **2. The signal is "does this prompt separate strong from weak", not "is it hard".** PC1 of the model vectors (65% of variance) runs from open-ended advice (strong wins 75%) to code and definite-answer questions (50%).
 Difficulty is similar at both ends (33% vs 43% hard), and the pattern holds on English-only votes.
-Details: `reports/r2_prompt_axes.md`, `reports/r2_pc1_english_check.md`.
+On English-only votes the strong tier's win rate still falls from 76% to 50% along PC1, so it is not a language effect.
+Details: `reports/r2_prompt_axes.md`.
 
 **3. Seven readable labels nearly replace the embedding.** Claude Haiku 5.5 tagged 9,247 prompts for about $0.97 (Batch API); a router on those labels (R3) reaches +0.063 on test vs +0.083 for full R2 (difference not significant).
 At equal training data, labels beat embeddings on dev (+0.046, significant) and point the same way on test (+0.030 [−0.010, 0.065], not significant).
@@ -38,7 +39,7 @@ Details: `reports/r3_dev_report.md`, `reports/r3_test_report.md`.
 
 ## Reproduce
 
-**Core path (no GPU, no API key; ends at the random baseline).** Python 3.13. Run from an empty environment on 4 CPU cores in about 13 minutes after the download; it reproduced the committed step reports byte for byte.
+**Core path (no GPU, no API key; ends at the random baseline).** Python 3.13. Run from an empty environment on 4 CPU cores in about 13 minutes after the download; its step reports matched the earlier committed versions (in the git history) byte for byte.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -59,6 +60,6 @@ python -I scripts/evaluate.py . --demo       # random router APGR ≈ 0.50, rati
 
 ## Reports
 
-Full report: [English](reports/report_en.md) · [Chinese](reports/report_zh.md) (PDF versions alongside). All step reports, figures and the two test-set reports are in `reports/`.
+Full report: [English](reports/report_en.md) · [Chinese](reports/report_zh.md) (PDF versions alongside). `reports/` keeps only the main write-ups: data, approach 1, approach 2, overhead, and the two test-set reports with their pre-registrations. Step reports, per-router evaluation tables and tuning logs are written by the scripts when you run them (see [scripts/README.md](scripts/README.md)).
 
 Data: [lmarena-ai/arena-human-preference-140k](https://huggingface.co/datasets/lmarena-ai/arena-human-preference-140k), prompts under CC-BY-4.0 (see `data/README.md`). Code: MIT.
