@@ -1,4 +1,4 @@
-# LLM 路由器 v2：PM 报告
+# LLM 路由器 v2 报告
 
 Nov 10, 2026 · @Yiqing
 
