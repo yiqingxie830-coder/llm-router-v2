@@ -533,7 +533,8 @@ th{font-size:14px;font-weight:700;color:var(--ink)}
           <li><span class="l-en"><b>Labels are preferences, not correctness.</b> 37% of repeated prompts get contradictory votes; majority-vote ceiling 79.5%.</span><span class="l-zh"><b>标签是偏好，不是正确率。</b>重复 prompt 有 37% 结论矛盾，多数票天花板 79.5%。</span></li>
           <li><span class="l-en"><b>Costs are underestimated.</b> Hidden reasoning tokens excluded; the strong tier has more reasoning models.</span><span class="l-zh"><b>成本被低估。</b>没算隐藏思考 token，强档里推理模型更多。</span></li>
           <li><span class="l-en"><b>Small test set.</b> Strong vs weak has only 999 votes; intervals about 3× wider than dev.</span><span class="l-zh"><b>测试集小。</b>强弱档只有 999 票，区间宽度约是开发集的 3 倍。</span></li>
-          <li><span class="l-en"><b>Lower bound is dev-only</b>, and ratings are not adjusted for answer length or style.</span><span class="l-zh"><b>下限只有开发集的数</b>，评分也没有扣除回答长度和风格的影响。</span></li>
+          <li><span class="l-en"><b>Lower bound not validated on test.</b> Only 3 model pairs in the test set have enough votes.</span><span class="l-zh"><b>下限未经测试集验证。</b>测试集中票数够的模型对只有 3 对。</span></li>
+          <li><span class="l-en"><b>No style control on ratings.</b> Voters favor longer, richer-formatted answers, which may affect the strong and weak tiers.</span><span class="l-zh"><b>评分未做风格控制。</b>用户偏爱更长、格式更丰富的回答，强弱档划分可能受此影响。</span></li>
         </ul>
       </div>
     </div>
